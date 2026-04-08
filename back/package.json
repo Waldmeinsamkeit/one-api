@@ -1,0 +1,13 @@
+{
+  "name": "one-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Unified API aggregator with AI-generated deterministic adapters.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "verify": "node scripts/verify.js",
+    "llm:demo": "node scripts/llm-generate-demo.js"
+  }
+}

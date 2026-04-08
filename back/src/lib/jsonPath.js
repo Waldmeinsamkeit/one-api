@@ -1,0 +1,104 @@
+function parsePath(path) {
+  if (!path.startsWith("$")) {
+    throw new Error(`Invalid JSONPath: ${path}`);
+  }
+  if (path === "$") {
+    return [];
+  }
+
+  const tokens = [];
+  let i = 1;
+  while (i < path.length) {
+    const ch = path[i];
+    if (ch === ".") {
+      i += 1;
+      let start = i;
+      while (i < path.length && /[a-zA-Z0-9_]/.test(path[i])) {
+        i += 1;
+      }
+      if (start === i) {
+        // Allow numeric direct access like $.0
+        while (i < path.length && /[0-9]/.test(path[i])) {
+          i += 1;
+        }
+      }
+      const key = path.slice(start, i);
+      if (!key) {
+        throw new Error(`Unsupported JSONPath near index ${i}`);
+      }
+      tokens.push({ type: "key", value: /^[0-9]+$/.test(key) ? Number(key) : key });
+      continue;
+    }
+    if (ch === "[") {
+      i += 1;
+      if (path[i] === "'" || path[i] === '"') {
+        const quote = path[i];
+        i += 1;
+        const start = i;
+        while (i < path.length && path[i] !== quote) {
+          i += 1;
+        }
+        const key = path.slice(start, i);
+        if (path[i] !== quote || path[i + 1] !== "]") {
+          throw new Error(`Unsupported JSONPath bracket key near index ${i}`);
+        }
+        tokens.push({ type: "key", value: key });
+        i += 2;
+        continue;
+      }
+      const start = i;
+      while (i < path.length && /[0-9]/.test(path[i])) {
+        i += 1;
+      }
+      const idxText = path.slice(start, i);
+      if (!idxText || path[i] !== "]") {
+        throw new Error(`Unsupported JSONPath array index near index ${i}`);
+      }
+      tokens.push({ type: "index", value: Number(idxText) });
+      i += 1;
+      continue;
+    }
+    throw new Error(`Unsupported JSONPath token '${ch}' at index ${i}`);
+  }
+  return tokens;
+}
+
+export function readJsonPath(data, path) {
+  const tokens = parsePath(path);
+  let ptr = data;
+  for (const token of tokens) {
+    if (ptr === null || ptr === undefined) {
+      return undefined;
+    }
+    if (token.type === "key") {
+      ptr = ptr[token.value];
+      continue;
+    }
+    if (token.type === "index") {
+      if (!Array.isArray(ptr)) {
+        return undefined;
+      }
+      ptr = ptr[token.value];
+    }
+  }
+  return ptr;
+}
+
+export function mapResponse(rawBody, mapping) {
+  if (!mapping || typeof mapping !== "object") {
+    return rawBody;
+  }
+  const output = {};
+  for (const [key, value] of Object.entries(mapping)) {
+    if (typeof value === "string" && value.startsWith("$")) {
+      output[key] = readJsonPath(rawBody, value);
+      continue;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      output[key] = mapResponse(rawBody, value);
+      continue;
+    }
+    output[key] = value;
+  }
+  return output;
+}

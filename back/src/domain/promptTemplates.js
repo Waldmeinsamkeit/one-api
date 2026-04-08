@@ -1,0 +1,82 @@
+const ADAPTER_SCHEMA_TEMPLATE = {
+  api_slug: "string",
+  action: "string",
+  adapter_schema_version: "1.0",
+  logic_version: 1,
+  target: {
+    url: "https://example.com/path",
+    method: "GET|POST|PUT|PATCH|DELETE|HEAD",
+    headers: {
+      Accept: "application/json",
+      Authorization: "Bearer {{secrets.api_key}}"
+    },
+    query_params: {
+      any_field: "{{payload.some_field}}"
+    },
+    body: null
+  },
+  response_mapping: {
+    data: "$"
+  },
+  auth_ref: {
+    secret_name: "api_key",
+    placement: "header|query",
+    key: "Authorization|appid",
+    prefix: "Bearer "
+  },
+  policy: {
+    timeout_ms: 8000,
+    retry: {
+      max_attempts: 1
+    }
+  }
+};
+
+export function buildSystemPrompt() {
+  return [
+    "You are an API adapter compiler.",
+    "Task: convert third-party API description into deterministic adapter JSON.",
+    "Output JSON only. No markdown. No comments.",
+    "Never include secret values, only secret placeholders like {{secrets.api_key}}.",
+    "Expression language is restricted to these functions: coalesce, to_string, to_number, eq, if.",
+    "Use JSONPath in response_mapping for extraction.",
+    "If API auth unknown, default to Authorization header with Bearer {{secrets.api_key}}.",
+    "Adapter schema must follow exactly this structure:",
+    JSON.stringify(ADAPTER_SCHEMA_TEMPLATE)
+  ].join("\n");
+}
+
+export function buildUserPrompt({ apiSlug, action, sourceType, sourceContent, targetFormat }) {
+  const requestedTarget =
+    targetFormat ||
+    JSON.stringify(
+      {
+        unified_request: {
+          api_slug: "string",
+          action: "string",
+          payload: {}
+        },
+        unified_response: {
+          success: "boolean",
+          data: {},
+          error: { code: "string", message: "string" },
+          meta: { upstream_status: "number", adapter_version: "number" }
+        }
+      },
+      null,
+      2
+    );
+
+  return [
+    `api_slug: ${apiSlug}`,
+    `action: ${action}`,
+    `source_type: ${sourceType}`,
+    "source_content:",
+    sourceContent,
+    "target_unified_contract:",
+    requestedTarget,
+    "Generate the best adapter JSON for this API and contract.",
+    "Use adapter_schema_version=1.0 and logic_version=1.",
+    "If source has multiple endpoints, choose the endpoint that best matches action."
+  ].join("\n");
+}
