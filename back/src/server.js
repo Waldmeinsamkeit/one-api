@@ -3,10 +3,22 @@ import { config } from "./config.js";
 import { InMemoryRepositories } from "./domain/repositories.js";
 import { ModelRegistry } from "./domain/modelRegistry.js";
 import { PlatformService } from "./domain/platformService.js";
+import crypto from "node:crypto";
 
 const repositories = new InMemoryRepositories();
 const modelRegistry = new ModelRegistry();
 const service = new PlatformService({ repositories, modelRegistry });
+let currentPlatformToken = config.platformToken;
+
+function maskToken(token) {
+  if (!token) {
+    return "";
+  }
+  if (token.length <= 8) {
+    return `${token.slice(0, 2)}***`;
+  }
+  return `${token.slice(0, 4)}...${token.slice(-4)}`;
+}
 
 function sendJson(res, status, body) {
   res.writeHead(status, {
@@ -31,7 +43,7 @@ async function readJson(req) {
 
 function requireAuth(req, res) {
   const auth = req.headers.authorization ?? "";
-  if (auth !== `Bearer ${config.platformToken}`) {
+  if (auth !== `Bearer ${currentPlatformToken}`) {
     sendJson(res, 401, { success: false, error: { code: "UNAUTHORIZED", message: "Invalid token" } });
     return null;
   }
@@ -54,7 +66,15 @@ function safeError(res, error) {
 const server = http.createServer(async (req, res) => {
   try {
     const method = req.method ?? "GET";
-    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    const parsedUrl = new URL(req.url ?? "/", "http://localhost");
+    const path = parsedUrl.pathname;
+    const requestStart = Date.now();
+    res.on("finish", () => {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[${new Date().toISOString()}] ${method} ${path} -> ${res.statusCode} ${Date.now() - requestStart}ms`
+      );
+    });
 
     if (method === "OPTIONS") {
       res.writeHead(204, {
@@ -78,6 +98,35 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/v1/models" && method === "GET") {
       sendJson(res, 200, { success: true, data: service.listModelProfiles() });
+      return;
+    }
+
+    if (path === "/v1/platform-token" && method === "GET") {
+      sendJson(res, 200, {
+        success: true,
+        data: {
+          masked: maskToken(currentPlatformToken),
+          length: currentPlatformToken.length
+        }
+      });
+      return;
+    }
+
+    if (path === "/v1/platform-token/rotate" && method === "POST") {
+      currentPlatformToken = `ptk_${crypto.randomBytes(18).toString("hex")}`;
+      sendJson(res, 200, {
+        success: true,
+        data: {
+          token: currentPlatformToken,
+          masked: maskToken(currentPlatformToken),
+          rotated_at: new Date().toISOString()
+        }
+      });
+      return;
+    }
+
+    if (path === "/v1/models/active" && method === "GET") {
+      sendJson(res, 200, { success: true, data: service.getActiveModelProfile(workspaceId) });
       return;
     }
 
@@ -232,6 +281,8 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, { success: false, error: { code: "NOT_FOUND", message: "Route not found" } });
   } catch (error) {
     safeError(res, error);
+    // eslint-disable-next-line no-console
+    console.log(`[error] ${(error && error.message) || "unknown error"}`);
   }
 });
 

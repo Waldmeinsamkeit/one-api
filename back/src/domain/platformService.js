@@ -39,6 +39,17 @@ export class PlatformService {
     return this.modelRegistry.list();
   }
 
+  getActiveModelProfile(workspaceId) {
+    const active = this.modelRegistry.getActive(workspaceId);
+    if (!active) {
+      return null;
+    }
+    return {
+      ...active,
+      api_key_configured: this.modelRegistry.isApiKeyConfigured(active.provider)
+    };
+  }
+
   activateModelProfile({ workspaceId, modelProfileId }) {
     return this.modelRegistry.setActive(workspaceId, modelProfileId);
   }
@@ -57,6 +68,12 @@ export class PlatformService {
     targetFormat
   }) {
     const profile = this.modelRegistry.getActive(workspaceId);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[adapter.generate] workspace=${workspaceId} provider=${profile?.provider ?? "none"} model=${
+        profile?.model ?? "none"
+      }`
+    );
     const generation = await generateAdapterWithLlmOrFallback({
       apiSlug,
       action,

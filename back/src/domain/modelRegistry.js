@@ -9,27 +9,34 @@ export class ModelRegistry {
   }
 
   seedDefaults() {
+    const defaultProvider = config.openaiApiKey
+      ? "openai"
+      : config.deepseekApiKey
+        ? "deepseek"
+        : config.geminiApiKey
+          ? "google"
+          : "openai";
     const defaults = [
       {
         provider: "openai",
         model: "gpt-4o-mini",
         system_prompt: "",
         schema_id: "adapter-schema-v1",
-        status: "active"
+        status: defaultProvider === "openai" ? "active" : "standby"
       },
       {
         provider: "google",
         model: "gemini-1.5-flash",
         system_prompt: "",
         schema_id: "adapter-schema-v1",
-        status: "standby"
+        status: defaultProvider === "google" ? "active" : "standby"
       },
       {
         provider: "deepseek",
         model: "deepseek-chat",
         system_prompt: "",
         schema_id: "adapter-schema-v1",
-        status: "standby"
+        status: defaultProvider === "deepseek" ? "active" : "standby"
       }
     ];
     for (const item of defaults) {

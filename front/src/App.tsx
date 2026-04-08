@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import {
   Activity,
+  BookOpenText,
   Cable,
+  Check,
   Copy,
   FlaskConical,
   KeyRound,
   LoaderCircle,
   Logs,
   Play,
+  RefreshCw,
   Rocket,
   Save
 } from "lucide-react";
@@ -56,6 +59,10 @@ function App() {
   const [secrets, setSecrets] = useState<SecretRecord[]>([]);
   const [executions, setExecutions] = useState<ExecutionRecord[]>([]);
   const [selectedExecution, setSelectedExecution] = useState<ExecutionRecord | null>(null);
+  const [activeModel, setActiveModel] = useState<{ provider: string; model: string } | null>(null);
+  const [tokenMasked, setTokenMasked] = useState("");
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [showTokenPlain, setShowTokenPlain] = useState(false);
 
   const [secretName, setSecretName] = useState("api_key");
   const [secretValue, setSecretValue] = useState("");
@@ -95,10 +102,34 @@ function App() {
     }
   }
 
+  async function refreshActiveModel() {
+    try {
+      const model = await api.getActiveModel();
+      if (!model) {
+        setActiveModel(null);
+        return;
+      }
+      setActiveModel({ provider: model.provider, model: model.model });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function refreshTokenInfo() {
+    try {
+      const info = await api.getPlatformTokenInfo();
+      setTokenMasked(info.masked);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   useEffect(() => {
     refreshAdapters();
     refreshSecrets();
     refreshLogs();
+    refreshActiveModel();
+    refreshTokenInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, workspace]);
 
@@ -208,6 +239,8 @@ function App() {
             { key: "secrets", icon: KeyRound, label: "Secrets" },
             { key: "logs", icon: Logs, label: "Logs" },
             { key: "playground", icon: FlaskConical, label: "Play" }
+            ,
+            { key: "guide", icon: BookOpenText, label: "说明" }
           ].map((item) => (
             <button
               key={item.key}
@@ -233,19 +266,60 @@ function App() {
               onChange={(e) => setWorkspace(e.target.value)}
               className="rounded-md border border-slate-300 px-2 py-1 text-sm"
             />
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
+              当前模型: {activeModel ? `${activeModel.provider}/${activeModel.model}` : "未获取"}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <input
-              value={token}
+              value={showTokenPlain ? token : tokenMasked || (token ? `${token.slice(0, 4)}...${token.slice(-4)}` : "")}
               onChange={(e) => setToken(e.target.value)}
               className="w-72 rounded-md border border-slate-300 px-2 py-1 text-sm"
+              readOnly={!showTokenPlain}
             />
             <button
-              onClick={() => copyText(token)}
+              onClick={() => setShowTokenPlain((v) => !v)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
+            >
+              {showTokenPlain ? "隐藏" : "显示"}
+            </button>
+            <button
+              onClick={async () => {
+                await copyText(token);
+                setTokenCopied(true);
+                setTimeout(() => setTokenCopied(false), 1200);
+                setNotice("Token 已复制");
+              }}
               className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
             >
-              <Copy size={14} />
-              复制Token
+              {tokenCopied ? <Check size={14} /> : <Copy size={14} />}
+              {tokenCopied ? "已复制" : "复制Token"}
+            </button>
+            <button
+              onClick={async () => {
+                setError("");
+                setNotice("");
+                try {
+                  const rotated = await api.rotatePlatformToken();
+                  setToken(rotated.token);
+                  setTokenMasked(rotated.masked);
+                  setShowTokenPlain(true);
+                  setNotice("Token 已重置，请立即复制并更新调用方配置。");
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
+              title="Rotate Token"
+            >
+              <RefreshCw size={14} />
+              重置Token
+            </button>
+            <button
+              onClick={refreshActiveModel}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
+            >
+              刷新模型
             </button>
           </div>
         </header>
@@ -296,12 +370,18 @@ function App() {
                     className="rounded-md border border-slate-300 px-2 py-1 text-sm"
                   />
                 </div>
+                <div className="mb-2 text-xs text-slate-500">
+                  `api_slug` 用于标识某个第三方服务（如 `openweather`）；`action` 用于标识具体能力（如 `get_current_weather`）。
+                </div>
                 <textarea
                   value={targetFormat}
                   onChange={(e) => setTargetFormat(e.target.value)}
                   className="mb-3 h-20 w-full rounded-md border border-slate-300 p-2 text-xs"
                   placeholder="可选：目标统一格式(JSON)"
                 />
+                <div className="mb-3 text-xs text-slate-500">
+                  目标统一格式用于告诉模型你期望的入参与出参结构；不填则使用系统默认格式。
+                </div>
                 <Editor
                   height="360px"
                   defaultLanguage={sourceType === "openapi" ? "json" : "shell"}
@@ -322,7 +402,7 @@ function App() {
 
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="mb-3 text-lg font-semibold">AI Preview</h2>
-                {generating && (
+                {generating && sourceType === "openapi" && (
                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
                     AI 正在逆向工程 API 结构...
                   </div>
@@ -491,6 +571,87 @@ function App() {
               <button onClick={() => setView("adapters")} className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white">
                 进入生成器
               </button>
+            </div>
+          )}
+
+          {view === "guide" && (
+            <div className="max-w-5xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-semibold">使用说明</h2>
+              <div className="space-y-4 text-sm leading-6 text-slate-700">
+                <section>
+                  <h3 className="mb-1 text-base font-semibold">1. 三种输入模式区别</h3>
+                  <p><strong>curl</strong>：最适合快速接入单个接口。直接粘贴命令，系统会解析 URL、方法、Header、Body。</p>
+                  <p><strong>openapi</strong>：最适合结构化文档。粘贴 OpenAPI JSON（或文档内容），模型会按 action 选择最匹配端点。</p>
+                  <p><strong>raw</strong>：最灵活。粘贴普通文档文本，或结合 source_url 让系统抓取网页后做语义解析。</p>
+                </section>
+
+                <section>
+                  <h3 className="mb-1 text-base font-semibold">2. 推荐操作流程</h3>
+                  <p>在 Adapters 页填写 api_slug 和 action，粘贴源信息后点 Generate Adapter。</p>
+                  <p>先用 Play 做 Dry Run 验证映射和鉴权，再点 Publish to V1 正式发布。</p>
+                  <p>需要密钥时到 Secrets 保存 `api_key`，不要把明文写进适配器。</p>
+                </section>
+
+                <section>
+                  <h3 className="mb-1 text-base font-semibold">2.1 Adapter 页面三个输入框怎么填</h3>
+                  <p><strong>api_slug（例如 demo_api）</strong>：填“第三方服务名称”，建议全小写+下划线，保持长期稳定。</p>
+                  <p>示例：`openweather`、`tmdb`、`notion_api`。</p>
+                  <p><strong>action（例如 execute_demo）</strong>：填“具体接口动作”，建议动词开头，表达单一能力。</p>
+                  <p>示例：`get_current_weather`、`create_post`、`list_users`。</p>
+                  <p><strong>目标统一格式(JSON)</strong>：可选。你希望转换后的统一请求/响应契约，模型会按这个契约生成映射。</p>
+                  <pre className="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`{
+  "unified_request": {
+    "api_slug": "string",
+    "action": "string",
+    "payload": {
+      "city": "string",
+      "units": "string"
+    }
+  },
+  "unified_response": {
+    "success": "boolean",
+    "data": {
+      "temp": "number",
+      "condition": "string"
+    },
+    "error": {
+      "code": "string",
+      "message": "string"
+    },
+    "meta": {
+      "upstream_status": "number",
+      "adapter_version": "number"
+    }
+  }
+}`}</pre>
+                  <p>如果你不确定怎么写，先留空。系统会用默认统一格式生成，后续再迭代 target_format。</p>
+                </section>
+
+                <section>
+                  <h3 className="mb-1 text-base font-semibold">3. 转换后如何调用</h3>
+                  <p>发布成功后，统一调用后端 `/v1/execute`：</p>
+                  <pre className="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`POST /v1/execute
+Authorization: Bearer <PLATFORM_TOKEN>
+x-workspace-id: <workspace>
+Content-Type: application/json
+
+{
+  "api_slug": "weather_service",
+  "action": "get_current_weather",
+  "payload": {
+    "city": "Paris",
+    "units": "celsius"
+  }
+}`}</pre>
+                  <p>返回是统一结构：`success / data / error / meta`，调用方不需要关心第三方 API 的原始形态。</p>
+                </section>
+
+                <section>
+                  <h3 className="mb-1 text-base font-semibold">4. 日志怎么看</h3>
+                  <p>Logs 页可看每次执行（含 Dry Run）的状态码和耗时，点击行可看：</p>
+                  <p>脱敏请求体、上游原始返回、映射后最终输出、Debug Trace。</p>
+                </section>
+              </div>
             </div>
           )}
         </section>

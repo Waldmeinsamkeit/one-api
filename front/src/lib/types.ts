@@ -1,4 +1,4 @@
-export type ViewKey = "adapters" | "secrets" | "logs" | "playground";
+export type ViewKey = "adapters" | "secrets" | "logs" | "playground" | "guide";
 
 export type ApiEnvelope<T> = {
   success: boolean;
@@ -52,4 +52,9 @@ export type ModelProfile = {
   model: string;
   status: string;
   api_key_configured: boolean;
+};
+
+export type PlatformTokenInfo = {
+  masked: string;
+  length: number;
 };

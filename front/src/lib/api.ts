@@ -4,6 +4,7 @@ import type {
   ExecuteResult,
   ExecutionRecord,
   ModelProfile,
+  PlatformTokenInfo,
   SecretRecord
 } from "./types";
 
@@ -88,10 +89,25 @@ export class ApiClient {
     return this.request<ModelProfile[]>("/v1/models");
   }
 
+  getActiveModel() {
+    return this.request<ModelProfile | null>("/v1/models/active");
+  }
+
   activateModel(modelProfileId: string) {
     return this.request<ModelProfile>("/v1/models/activate", {
       method: "POST",
       body: JSON.stringify({ model_profile_id: modelProfileId })
+    });
+  }
+
+  getPlatformTokenInfo() {
+    return this.request<PlatformTokenInfo>("/v1/platform-token");
+  }
+
+  rotatePlatformToken() {
+    return this.request<{ token: string; masked: string; rotated_at: string }>("/v1/platform-token/rotate", {
+      method: "POST",
+      body: JSON.stringify({})
     });
   }
 }
