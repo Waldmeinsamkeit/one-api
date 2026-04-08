@@ -583,6 +583,8 @@ function App() {
                   <p><strong>curl</strong>：最适合快速接入单个接口。直接粘贴命令，系统会解析 URL、方法、Header、Body。</p>
                   <p><strong>openapi</strong>：最适合结构化文档。粘贴 OpenAPI JSON（或文档内容），模型会按 action 选择最匹配端点。</p>
                   <p><strong>raw</strong>：最灵活。粘贴普通文档文本，或结合 source_url 让系统抓取网页后做语义解析。</p>
+                  <p className="mt-2">raw 示例（可直接粘贴到输入区）：</p>
+                  <pre className="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`Hi AI, we have this weather API. The URL is https://api.test.com/info. You need to put the city in the body as { 'location': 'city_name' }. It needs a Bearer token in the header.`}</pre>
                 </section>
 
                 <section>

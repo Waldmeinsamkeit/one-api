@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "description": "Prompt-time skill library for adapter generation.",
+  "skills": [
+    {
+      "id": "http_endpoint_extractor",
+      "name": "HTTP Endpoint Extractor",
+      "enabled": true,
+      "purpose": "Extract candidate endpoints, HTTP method, auth style, and payload fields from input docs.",
+      "instruction": "Prefer canonical API endpoint, infer method from examples, and keep uncertain fields in warnings."
+    },
+    {
+      "id": "jsonpath_response_mapper",
+      "name": "JSONPath Response Mapper",
+      "enabled": true,
+      "purpose": "Map nested upstream response fields into unified output using JSONPath.",
+      "instruction": "Use stable JSONPath paths and avoid lossy mappings."
+    },
+    {
+      "id": "web_search",
+      "name": "Web Search",
+      "enabled": true,
+      "purpose": "Use DuckDuckGo to search web pages and return title, link, and snippet for candidate sources.",
+      "instruction": "Use this first to discover likely official docs and API references."
+    },
+    {
+      "id": "web_fetch",
+      "name": "Web Fetch",
+      "enabled": true,
+      "purpose": "Fetch target URL content and extract readable markdown/text body.",
+      "instruction": "After web_search, fetch top candidate pages and extract endpoint/auth/params for adapter generation."
+    }
+  ]
+}

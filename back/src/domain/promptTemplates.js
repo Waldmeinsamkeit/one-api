@@ -32,8 +32,8 @@ const ADAPTER_SCHEMA_TEMPLATE = {
   }
 };
 
-export function buildSystemPrompt() {
-  return [
+export function buildSystemPrompt({ skillInstructions = "" } = {}) {
+  const base = [
     "You are an API adapter compiler.",
     "Task: convert third-party API description into deterministic adapter JSON.",
     "Output JSON only. No markdown. No comments.",
@@ -43,7 +43,14 @@ export function buildSystemPrompt() {
     "If API auth unknown, default to Authorization header with Bearer {{secrets.api_key}}.",
     "Adapter schema must follow exactly this structure:",
     JSON.stringify(ADAPTER_SCHEMA_TEMPLATE)
-  ].join("\n");
+  ];
+  if (skillInstructions) {
+    base.push(
+      "Skill execution workflow: first use web_search to find candidate docs, then use web_fetch to read target pages, then summarize and extract deterministic adapter fields."
+    );
+    base.push(skillInstructions);
+  }
+  return base.join("\n");
 }
 
 export function buildUserPrompt({ apiSlug, action, sourceType, sourceContent, targetFormat }) {

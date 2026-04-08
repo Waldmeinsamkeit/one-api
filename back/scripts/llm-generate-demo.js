@@ -1,6 +1,6 @@
-import { InMemoryRepositories } from "../../src/domain/repositories.js";
-import { ModelRegistry } from "../../src/domain/modelRegistry.js";
-import { PlatformService } from "../../src/domain/platformService.js";
+import { InMemoryRepositories } from "../src/domain/repositories.js";
+import { ModelRegistry } from "../src/domain/modelRegistry.js";
+import { PlatformService } from "../src/domain/platformService.js";
 
 async function run() {
   const service = new PlatformService({

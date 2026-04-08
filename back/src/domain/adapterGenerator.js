@@ -1,6 +1,8 @@
 import { buildSystemPrompt, buildUserPrompt } from "./promptTemplates.js";
 import { generateAdapterByLlm } from "./llmClient.js";
 import { assertSafeUrl } from "../lib/ssrf.js";
+import { config } from "../config.js";
+import { buildSkillPromptInstructions } from "./skillLibrary.js";
 
 function parseCurl(input) {
   const method = (input.match(/-X\s+([A-Z]+)/i)?.[1] ?? "GET").toUpperCase();
@@ -105,6 +107,8 @@ async function resolveSourceContent({ sourceType, sourceContent, sourceUrl }) {
 }
 
 function ensureAdapterDefaults(adapter, { apiSlug, action }) {
+  const normalizeUrl = (value) =>
+    typeof value === "string" ? value.trim().replace(/[.,;!?]+$/, "") : value;
   const merged = {
     ...adapter,
     api_slug: adapter.api_slug || apiSlug,
@@ -114,6 +118,9 @@ function ensureAdapterDefaults(adapter, { apiSlug, action }) {
   };
   if (!merged.target?.headers) {
     merged.target = { ...(merged.target || {}), headers: { Accept: "application/json" } };
+  }
+  if (merged.target?.url) {
+    merged.target.url = normalizeUrl(merged.target.url);
   }
   if (!merged.response_mapping) {
     merged.response_mapping = { data: "$" };
@@ -132,6 +139,50 @@ function ensureAdapterDefaults(adapter, { apiSlug, action }) {
   return merged;
 }
 
+async function assertTargetReachable(targetUrl) {
+  if (!config.enforceTargetReachability) {
+    return;
+  }
+  if (!targetUrl || typeof targetUrl !== "string") {
+    throw new Error("target.url 缺失，无法校验可达性");
+  }
+  try {
+    await assertSafeUrl(targetUrl, { allowPrivateIp: false });
+  } catch (error) {
+    throw new Error(`target.url 不可达或无法访问: ${targetUrl}`);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), config.targetReachabilityTimeoutMs);
+  try {
+    const response = await fetch(targetUrl, {
+      method: "HEAD",
+      redirect: "manual",
+      signal: controller.signal
+    });
+    if (response.status >= 500) {
+      return;
+    }
+    return;
+  } catch (error) {
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort("timeout"), config.targetReachabilityTimeoutMs);
+    try {
+      await fetch(targetUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller2.signal
+      });
+      return;
+    } catch {
+      throw new Error(`target.url 不可达或无法访问: ${targetUrl}`);
+    } finally {
+      clearTimeout(timer2);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function generateAdapterWithLlmOrFallback({
   apiSlug,
   action,
@@ -143,7 +194,9 @@ export async function generateAdapterWithLlmOrFallback({
 }) {
   const resolvedContent = await resolveSourceContent({ sourceType, sourceContent, sourceUrl });
   if (modelProfile) {
-    const systemPrompt = modelProfile.system_prompt?.trim() || buildSystemPrompt();
+    const systemPrompt =
+      modelProfile.system_prompt?.trim() ||
+      buildSystemPrompt({ skillInstructions: buildSkillPromptInstructions() });
     const userPrompt = buildUserPrompt({
       apiSlug,
       action,
@@ -157,8 +210,10 @@ export async function generateAdapterWithLlmOrFallback({
         systemPrompt,
         userPrompt
       });
+      const normalized = ensureAdapterDefaults(generated, { apiSlug, action });
+      await assertTargetReachable(normalized.target?.url);
       return {
-        adapter: ensureAdapterDefaults(generated, { apiSlug, action }),
+        adapter: normalized,
         generation_mode: "llm",
         source_excerpt: resolvedContent.slice(0, 500)
       };
@@ -170,6 +225,7 @@ export async function generateAdapterWithLlmOrFallback({
         sourceContent: resolvedContent,
         sourceUrl
       });
+      await assertTargetReachable(fallback.target?.url);
       return {
         adapter: fallback,
         generation_mode: "fallback",
@@ -186,6 +242,7 @@ export async function generateAdapterWithLlmOrFallback({
     sourceContent: resolvedContent,
     sourceUrl
   });
+  await assertTargetReachable(fallback.target?.url);
   return {
     adapter: fallback,
     generation_mode: "fallback",
