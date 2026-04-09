@@ -14,12 +14,16 @@ export function encryptSecret(plaintext, key) {
 }
 
 export function decryptSecret(record, key) {
+  const authTag = record.authTag ?? record.tag;
+  if (!authTag) {
+    throw new Error("Encrypted secret missing authTag");
+  }
   const decipher = crypto.createDecipheriv(
     "aes-256-gcm",
     key,
     Buffer.from(record.iv, "base64")
   );
-  decipher.setAuthTag(Buffer.from(record.authTag, "base64"));
+  decipher.setAuthTag(Buffer.from(authTag, "base64"));
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(record.ciphertext, "base64")),
     decipher.final()

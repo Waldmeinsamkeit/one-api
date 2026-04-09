@@ -33,6 +33,10 @@ export class SqliteSecretStore {
     const existing = this.getSecret(secret.workspace_id, secret.name);
     const now = new Date().toISOString();
     const createdAt = existing?.created_at ?? now;
+    const authTag = secret.authTag ?? secret.tag;
+    if (!authTag) {
+      throw new Error("secret.authTag is required");
+    }
     this.db
       .prepare(
         `
@@ -54,7 +58,7 @@ export class SqliteSecretStore {
         secret.algorithm,
         secret.iv,
         secret.ciphertext,
-        secret.tag,
+        authTag,
         createdAt,
         now
       );
@@ -62,7 +66,7 @@ export class SqliteSecretStore {
   }
 
   getSecret(workspaceId, name) {
-    return (
+    const row =
       this.db
         .prepare(
           `
@@ -71,8 +75,14 @@ export class SqliteSecretStore {
         WHERE workspace_id = ? AND name = ?
       `
         )
-        .get(workspaceId, name) ?? null
-    );
+        .get(workspaceId, name) ?? null;
+    if (!row) {
+      return null;
+    }
+    return {
+      ...row,
+      authTag: row.tag
+    };
   }
 
   listSecrets(workspaceId) {

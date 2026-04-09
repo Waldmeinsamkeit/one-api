@@ -34,3 +34,19 @@ test("sqlite secret store persists and reloads secrets", () => {
   assert.equal(listed.length, 1);
   assert.equal(listed[0].name, "api_key");
 });
+
+test("sqlite secret store accepts authTag input and returns authTag for decrypt", () => {
+  const dbPath = createTempDbPath();
+  const store = new SqliteSecretStore({ dbPath });
+  store.upsertSecret({
+    workspace_id: "default",
+    name: "api_key",
+    algorithm: "aes-256-gcm",
+    iv: "iv-2",
+    ciphertext: "cipher-2",
+    authTag: "auth-tag-2"
+  });
+  const got = store.getSecret("default", "api_key");
+  assert.ok(got);
+  assert.equal(got.authTag, "auth-tag-2");
+});
