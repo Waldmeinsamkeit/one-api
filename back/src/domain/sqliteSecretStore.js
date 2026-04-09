@@ -97,4 +97,16 @@ export class SqliteSecretStore {
       )
       .all(workspaceId);
   }
+
+  deleteSecret(workspaceId, name) {
+    const result = this.db
+      .prepare(
+        `
+      DELETE FROM secrets
+      WHERE workspace_id = ? AND name = ?
+    `
+      )
+      .run(workspaceId, name);
+    return result.changes > 0;
+  }
 }

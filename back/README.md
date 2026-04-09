@@ -28,16 +28,18 @@ node scripts/verify.js
 
 ## Local SQL for Secrets
 
-Secrets now support local SQLite persistence (enabled by default).
+Secrets, adapters, and executions now support local SQLite persistence (enabled by default).
 
 Env:
 
 ```env
 ENABLE_SQLITE_SECRETS=true
+ENABLE_SQLITE_STATE=true
 SQLITE_PATH=data/one-api.db
 ```
 
 Sensitive secret payload fields (`iv/ciphertext/tag`) are stored in SQLite, not in-memory only.
+Adapter drafts/active versions and execution logs are also restored after restart.
 
 ## Troubleshooting `fetch failed`
 

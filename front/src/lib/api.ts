@@ -77,6 +77,13 @@ export class ApiClient {
     });
   }
 
+  deleteSecret(name: string) {
+    return this.request<{ name: string; deleted: boolean }>("/v1/secrets/delete", {
+      method: "POST",
+      body: JSON.stringify({ name })
+    });
+  }
+
   listExecutions(limit = 100) {
     return this.request<ExecutionRecord[]>(`/v1/executions?limit=${limit}`);
   }

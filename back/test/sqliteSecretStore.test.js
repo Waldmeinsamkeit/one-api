@@ -50,3 +50,20 @@ test("sqlite secret store accepts authTag input and returns authTag for decrypt"
   assert.ok(got);
   assert.equal(got.authTag, "auth-tag-2");
 });
+
+test("sqlite secret store deletes secret by workspace and name", () => {
+  const dbPath = createTempDbPath();
+  const store = new SqliteSecretStore({ dbPath });
+  store.upsertSecret({
+    workspace_id: "default",
+    name: "api_key",
+    algorithm: "aes-256-gcm",
+    iv: "iv-3",
+    ciphertext: "cipher-3",
+    authTag: "auth-tag-3"
+  });
+  const deleted = store.deleteSecret("default", "api_key");
+  assert.equal(deleted, true);
+  const got = store.getSecret("default", "api_key");
+  assert.equal(got, null);
+});

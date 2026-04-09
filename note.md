@@ -97,3 +97,28 @@
   - `test/httpExecutor.test.js`（补 EACCES 场景）
   - `test/adapterGenerator.test.js`
   - `test/dryRun.test.js`（补“无 secret 占位符可执行”场景）
+
+## 7. 待完成目标（按优先级）
+### P0（当前优先）
+- [x] 响应映射契约修正（避免错误映射进入线上）：
+  - `publish` 前再次执行 schema 校验，阻止无效 `response_mapping` 发布为 active。
+  - `response_mapping` 拦截表达式误用（如 `if(...)` 字符串），明确仅支持 JSONPath 提取。
+  - 运行时映射支持点号键转嵌套对象（`meta.upstream_status` -> `{ meta: { upstream_status } }`）。
+- [x] 持久化补全（二期）：除 secrets 外，将 adapters/executions 也落本地 SQL，避免重启丢失。
+  - 新增 `src/domain/sqliteStateStore.js`。
+  - `InMemoryRepositories` 增加 `stateStore` 注入并在 adapter/execution 变更后持久化。
+  - 服务启动接入 `ENABLE_SQLITE_STATE`（默认开启），与 `SQLITE_PATH` 共用数据库文件。
+
+### P1（下一迭代）
+- [ ] 前端补全 `source_url` 输入与传参，打通后端抓取链路。
+- [ ] 模型管理 UI 完整化（models 列表、激活切换、prompt 编辑）。
+- [ ] 日志能力增强（分页、筛选、按条件查询）。
+- [ ] SSRF/重定向测试补强（重点覆盖“公网首跳后 302 到内网”阻断）。
+
+### P2（后续优化）
+- [ ] 错误码分层与接口返回结构标准化（401/403/422/5xx 等）。
+- [ ] 前后端契约文档自动化（OpenAPI 或固定 schema）。
+- [ ] 适配器体验增强（显式无鉴权/需鉴权模式提示与校验）。
+
+### 后期目标（暂不执行）
+- [ ] `POST /v1/platform-token/rotate` 权限收紧（加入 admin 校验）。

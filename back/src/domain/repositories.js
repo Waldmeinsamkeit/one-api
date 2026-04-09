@@ -9,11 +9,24 @@ function keyFor(workspaceId, apiSlug, action) {
 }
 
 export class InMemoryRepositories {
-  constructor({ secretStore = null } = {}) {
-    this.adapters = [];
+  constructor({ secretStore = null, stateStore = null } = {}) {
+    this.stateStore = stateStore;
+    this.adapters = stateStore ? stateStore.loadAdapters() : [];
     this.secrets = [];
-    this.executions = [];
+    this.executions = stateStore ? stateStore.loadExecutions() : [];
     this.secretStore = secretStore;
+  }
+
+  persistAdapters() {
+    if (this.stateStore) {
+      this.stateStore.saveAdapters(this.adapters);
+    }
+  }
+
+  persistExecutions() {
+    if (this.stateStore) {
+      this.stateStore.saveExecutions(this.executions);
+    }
   }
 
   nextLogicVersion(workspaceId, apiSlug, action) {
@@ -35,6 +48,7 @@ export class InMemoryRepositories {
       ...adapter
     };
     this.adapters.push(record);
+    this.persistAdapters();
     return record;
   }
 
@@ -44,6 +58,7 @@ export class InMemoryRepositories {
       return null;
     }
     this.adapters[idx] = { ...this.adapters[idx], ...patch, updated_at: nowIso() };
+    this.persistAdapters();
     return this.adapters[idx];
   }
 
@@ -54,6 +69,7 @@ export class InMemoryRepositories {
     }
     adapter.review_status = "pending";
     adapter.updated_at = nowIso();
+    this.persistAdapters();
     return adapter;
   }
 
@@ -65,6 +81,7 @@ export class InMemoryRepositories {
     adapter.review_status = approved ? "approved" : "rejected";
     adapter.is_public = approved;
     adapter.updated_at = nowIso();
+    this.persistAdapters();
     return adapter;
   }
 
@@ -89,6 +106,7 @@ export class InMemoryRepositories {
     }
     target.status = "active";
     target.updated_at = nowIso();
+    this.persistAdapters();
     return target;
   }
 
@@ -170,6 +188,18 @@ export class InMemoryRepositories {
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
 
+  deleteSecret(workspaceId, name) {
+    if (this.secretStore) {
+      return this.secretStore.deleteSecret(workspaceId, name);
+    }
+    const idx = this.secrets.findIndex((s) => s.workspace_id === workspaceId && s.name === name);
+    if (idx < 0) {
+      return false;
+    }
+    this.secrets.splice(idx, 1);
+    return true;
+  }
+
   createExecution(execution) {
     const record = {
       id: crypto.randomUUID(),
@@ -177,6 +207,7 @@ export class InMemoryRepositories {
       ...execution
     };
     this.executions.push(record);
+    this.persistExecutions();
     return record;
   }
 
@@ -192,10 +223,17 @@ export class InMemoryRepositories {
   }
 
   cleanupExpiredTraces(now = Date.now()) {
+    let changed = false;
     for (const execution of this.executions) {
       if (execution.trace_expire_at && now > new Date(execution.trace_expire_at).getTime()) {
-        execution.trace_snapshot = null;
+        if (execution.trace_snapshot !== null) {
+          execution.trace_snapshot = null;
+          changed = true;
+        }
       }
+    }
+    if (changed) {
+      this.persistExecutions();
     }
   }
 }

@@ -28,6 +28,34 @@ function checkExpressions(obj, path = "$") {
   }
 }
 
+function checkResponseMapping(mapping, path = "$.response_mapping") {
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
+    throw new Error(`${path} must be an object`);
+  }
+  for (const [key, value] of Object.entries(mapping)) {
+    const currentPath = `${path}.${key}`;
+    if (!key || key.trim().length === 0) {
+      throw new Error(`Invalid response mapping key at ${currentPath}`);
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.startsWith("$")) {
+        continue;
+      }
+      if (/^[a-zA-Z_][a-zA-Z0-9_]*\s*\(/.test(trimmed)) {
+        throw new Error(
+          `response_mapping at ${currentPath} looks like expression '${trimmed}'. Use JSONPath only.`
+        );
+      }
+      continue;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      checkResponseMapping(value, currentPath);
+      continue;
+    }
+  }
+}
+
 export function validateAdapterSchema(adapter) {
   assertObject(adapter, "adapter");
   const required = ["api_slug", "action", "adapter_schema_version", "target", "response_mapping"];
@@ -46,6 +74,7 @@ export function validateAdapterSchema(adapter) {
   }
   checkExpressions(adapter.target);
   checkExpressions(adapter.response_mapping);
+  checkResponseMapping(adapter.response_mapping);
   if (adapter.request_mapping) {
     checkExpressions(adapter.request_mapping);
   }

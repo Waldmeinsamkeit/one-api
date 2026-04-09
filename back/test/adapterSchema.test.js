@@ -54,3 +54,22 @@ test("if then else expression in template passes", () => {
   };
   assert.equal(validateAdapterSchema(adapter), true);
 });
+
+test("response_mapping rejects expression-like strings", () => {
+  const adapter = {
+    api_slug: "weather",
+    action: "get_current",
+    adapter_schema_version: "1.0",
+    target: {
+      url: "https://example.com/weather",
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    },
+    response_mapping: {
+      success: "if(eq($.status, 200), true, false)"
+    }
+  };
+  assert.throws(() => validateAdapterSchema(adapter), /Use JSONPath only/);
+});

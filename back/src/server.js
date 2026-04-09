@@ -4,12 +4,14 @@ import { InMemoryRepositories } from "./domain/repositories.js";
 import { ModelRegistry } from "./domain/modelRegistry.js";
 import { PlatformService } from "./domain/platformService.js";
 import { SqliteSecretStore } from "./domain/sqliteSecretStore.js";
+import { SqliteStateStore } from "./domain/sqliteStateStore.js";
 import crypto from "node:crypto";
 
+const stateStore = config.enableSqliteState ? new SqliteStateStore({ dbPath: config.sqlitePath }) : null;
 const secretStore = config.enableSqliteSecrets
   ? new SqliteSecretStore({ dbPath: config.sqlitePath })
   : null;
-const repositories = new InMemoryRepositories({ secretStore });
+const repositories = new InMemoryRepositories({ secretStore, stateStore });
 const modelRegistry = new ModelRegistry();
 const service = new PlatformService({ repositories, modelRegistry });
 let currentPlatformToken = config.platformToken;
@@ -229,6 +231,16 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/v1/secrets" && method === "GET") {
       sendJson(res, 200, { success: true, data: service.listSecrets(workspaceId) });
+      return;
+    }
+
+    if (path === "/v1/secrets/delete" && method === "POST") {
+      const body = await readJson(req);
+      const result = service.deleteSecret({
+        workspaceId,
+        name: body.name
+      });
+      sendJson(res, 200, { success: true, data: result });
       return;
     }
 

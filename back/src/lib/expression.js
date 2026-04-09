@@ -11,6 +11,7 @@ const BUILTINS = {
   eq: (a, b) => a === b,
   if: (condition, whenTrue, whenFalse) => (condition ? whenTrue : whenFalse)
 };
+const ALLOWED_ROOTS = new Set(["payload", "secrets", "meta"]);
 
 function findTopLevelKeyword(input, keyword) {
   let depth = 0;
@@ -169,6 +170,10 @@ export function evaluateExpression(expression, context) {
 
   if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(expr)) {
     throw new Error(`Invalid expression: ${expr}`);
+  }
+  const root = expr.split(".")[0];
+  if (!ALLOWED_ROOTS.has(root)) {
+    throw new Error(`Expression root not allowed: ${root}`);
   }
 
   return getPath(expr, context);

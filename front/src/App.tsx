@@ -13,7 +13,8 @@ import {
   Play,
   RefreshCw,
   Rocket,
-  Save
+  Save,
+  Trash2
 } from "lucide-react";
 import { ApiClient } from "./lib/api";
 import { cn, copyText } from "./lib/utils";
@@ -112,6 +113,7 @@ function App() {
 
   const [secretName, setSecretName] = useState("api_key");
   const [secretValue, setSecretValue] = useState("");
+  const [deletingSecret, setDeletingSecret] = useState("");
 
   const [playAdapter, setPlayAdapter] = useState<AdapterRecord | null>(null);
   const [playPayload, setPlayPayload] = useState<Record<string, string>>({});
@@ -225,6 +227,24 @@ function App() {
       await refreshSecrets();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  async function onDeleteSecret(name: string) {
+    if (!window.confirm(`确认删除 Secret: ${name} ?`)) {
+      return;
+    }
+    setError("");
+    setNotice("");
+    setDeletingSecret(name);
+    try {
+      await api.deleteSecret(name);
+      setNotice(`Secret ${name} 已删除`);
+      await refreshSecrets();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDeletingSecret("");
     }
   }
 
@@ -563,43 +583,77 @@ function App() {
           )}
 
           {view === "secrets" && (
-            <div className="max-w-3xl rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-lg font-semibold">Secrets 管理</h2>
-              <div className="mb-4 grid grid-cols-3 gap-2">
-                <input
-                  value={secretName}
-                  onChange={(e) => setSecretName(e.target.value)}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                  placeholder="name"
-                />
-                <input
-                  value={secretValue}
-                  onChange={(e) => setSecretValue(e.target.value)}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                  placeholder="value"
-                />
-                <button onClick={onSaveSecret} className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white">
-                  保存
-                </button>
+            <div className="max-w-5xl rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
+              <div className="mb-4 flex items-end justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Secrets 管理</h2>
+                  <p className="mt-1 text-xs text-slate-500">仅保存上游 API 所需凭证，执行时按模板中的 `secrets.xxx` 注入。</p>
+                </div>
+                <span className="rounded-md bg-slate-900 px-2 py-1 text-[11px] text-white">
+                  {secrets.length} items
+                </span>
               </div>
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2">Name</th>
-                    <th>Algorithm</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {secrets.map((item) => (
-                    <tr key={item.name} className="border-b border-slate-100">
-                      <td className="py-2">{item.name}</td>
-                      <td>{item.algorithm}</td>
-                      <td>{new Date(item.updated_at).toLocaleString()}</td>
+
+              <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <input
+                    value={secretName}
+                    onChange={(e) => setSecretName(e.target.value)}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Secret 名称（如 api_key）"
+                  />
+                  <input
+                    value={secretValue}
+                    onChange={(e) => setSecretValue(e.target.value)}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Secret 值"
+                  />
+                  <button onClick={onSaveSecret} className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white">
+                    保存 Secret
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                      <th className="py-2 pl-3">Name</th>
+                      <th>Algorithm</th>
+                      <th>Updated</th>
+                      <th className="pr-3 text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {secrets.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-8 text-center text-xs text-slate-500">
+                          暂无 Secret，先添加一个用于上游鉴权。
+                        </td>
+                      </tr>
+                    )}
+                    {secrets.map((item) => (
+                      <tr key={item.name} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60">
+                        <td className="py-2 pl-3 font-medium text-slate-800">{item.name}</td>
+                        <td>
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{item.algorithm}</span>
+                        </td>
+                        <td className="text-slate-600">{new Date(item.updated_at).toLocaleString()}</td>
+                        <td className="pr-3 text-right">
+                          <button
+                            onClick={() => onDeleteSecret(item.name)}
+                            disabled={deletingSecret === item.name}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700 disabled:opacity-60"
+                          >
+                            {deletingSecret === item.name ? <LoaderCircle size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 

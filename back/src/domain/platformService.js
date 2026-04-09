@@ -130,6 +130,11 @@ export class PlatformService {
   }
 
   publishAdapter({ workspaceId, adapterId }) {
+    const record = this.repositories.getAdapterById(adapterId);
+    if (!record || record.workspace_id !== workspaceId) {
+      throw new Error("Adapter not found");
+    }
+    validateAdapterSchema(record.spec);
     return this.repositories.publishAdapter(workspaceId, adapterId);
   }
 
@@ -149,6 +154,17 @@ export class PlatformService {
 
   listSecrets(workspaceId) {
     return this.repositories.listSecrets(workspaceId);
+  }
+
+  deleteSecret({ workspaceId, name }) {
+    if (!name || !String(name).trim()) {
+      throw new Error("Secret name is required");
+    }
+    const deleted = this.repositories.deleteSecret(workspaceId, String(name).trim());
+    if (!deleted) {
+      throw new Error("Secret not found");
+    }
+    return { name: String(name).trim(), deleted: true };
   }
 
   async dryRun({ workspaceId, adapter, payload, tempSecrets = {} }) {

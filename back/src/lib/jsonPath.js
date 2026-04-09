@@ -88,17 +88,37 @@ export function mapResponse(rawBody, mapping) {
   if (!mapping || typeof mapping !== "object") {
     return rawBody;
   }
+  const setNestedValue = (obj, keyPath, value) => {
+    const keys = keyPath.split(".").filter(Boolean);
+    if (keys.length === 0) {
+      return;
+    }
+    let cursor = obj;
+    for (let i = 0; i < keys.length - 1; i += 1) {
+      const key = keys[i];
+      if (!cursor[key] || typeof cursor[key] !== "object" || Array.isArray(cursor[key])) {
+        cursor[key] = {};
+      }
+      cursor = cursor[key];
+    }
+    cursor[keys[keys.length - 1]] = value;
+  };
+
   const output = {};
   for (const [key, value] of Object.entries(mapping)) {
+    let mappedValue;
     if (typeof value === "string" && value.startsWith("$")) {
-      output[key] = readJsonPath(rawBody, value);
-      continue;
+      mappedValue = readJsonPath(rawBody, value);
+    } else if (value && typeof value === "object" && !Array.isArray(value)) {
+      mappedValue = mapResponse(rawBody, value);
+    } else {
+      mappedValue = value;
     }
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      output[key] = mapResponse(rawBody, value);
-      continue;
+    if (key.includes(".")) {
+      setNestedValue(output, key, mappedValue);
+    } else {
+      output[key] = mappedValue;
     }
-    output[key] = value;
   }
   return output;
 }
