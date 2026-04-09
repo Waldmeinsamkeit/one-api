@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { InMemoryRepositories } from "../src/domain/repositories.js";
-import { ModelRegistry } from "../src/domain/modelRegistry.js";
 
 function createUpstreamServer() {
   const server = http.createServer((req, res) => {
@@ -17,8 +15,10 @@ function createUpstreamServer() {
   });
 }
 
-test("dry run executes without persisting secrets or execution", async () => {
+test("dry run executes without persisting secrets", async () => {
   process.env.ALLOW_PRIVATE_UPSTREAM = "true";
+  const { InMemoryRepositories } = await import("../src/domain/repositories.js");
+  const { ModelRegistry } = await import("../src/domain/modelRegistry.js");
   const { PlatformService } = await import("../src/domain/platformService.js");
   const { server, port } = await createUpstreamServer();
   try {
@@ -51,7 +51,45 @@ test("dry run executes without persisting secrets or execution", async () => {
     assert.equal(response.success, true);
     assert.equal(response.data.temp, 20);
     assert.equal(repos.secrets.length, 0);
-    assert.equal(repos.executions.length, 0);
+    assert.equal(repos.executions.length, 1);
+    assert.equal(repos.executions[0].dry_run, true);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("dry run works without api_key when adapter has no secret placeholders", async () => {
+  process.env.ALLOW_PRIVATE_UPSTREAM = "true";
+  const { InMemoryRepositories } = await import("../src/domain/repositories.js");
+  const { ModelRegistry } = await import("../src/domain/modelRegistry.js");
+  const { PlatformService } = await import("../src/domain/platformService.js");
+  const { server, port } = await createUpstreamServer();
+  try {
+    const repos = new InMemoryRepositories();
+    const service = new PlatformService({ repositories: repos, modelRegistry: new ModelRegistry() });
+    const adapter = {
+      api_slug: "country",
+      action: "lookup",
+      adapter_schema_version: "1.0",
+      target: {
+        url: `http://127.0.0.1:${port}/country`,
+        method: "GET",
+        headers: {
+          Accept: "application/json"
+        }
+      },
+      response_mapping: {
+        temp: "$.weather.temp"
+      }
+    };
+    const response = await service.dryRun({
+      workspaceId: "w1",
+      adapter,
+      payload: {},
+      tempSecrets: {}
+    });
+    assert.equal(response.success, true);
+    assert.equal(response.data.temp, 20);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

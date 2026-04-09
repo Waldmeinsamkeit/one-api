@@ -12,3 +12,19 @@ test("evaluate path and builtins", () => {
   assert.equal(evaluateExpression("if(eq(payload.units,'celsius'),'C','F')", context), "C");
   assert.equal(evaluateExpression("coalesce(payload.missing,'fallback')", context), "fallback");
 });
+
+test("evaluate if then else syntax", () => {
+  const context = {
+    payload: { full_text: true, units: "celsius" },
+    secrets: {},
+    meta: {}
+  };
+  assert.equal(
+    evaluateExpression("if eq(payload.full_text, true) then 'true' else 'false'", context),
+    "true"
+  );
+  assert.equal(
+    evaluateExpression("if eq(payload.units, 'metric') then 'C' else 'F'", context),
+    "F"
+  );
+});

@@ -3,9 +3,13 @@ import { config } from "./config.js";
 import { InMemoryRepositories } from "./domain/repositories.js";
 import { ModelRegistry } from "./domain/modelRegistry.js";
 import { PlatformService } from "./domain/platformService.js";
+import { SqliteSecretStore } from "./domain/sqliteSecretStore.js";
 import crypto from "node:crypto";
 
-const repositories = new InMemoryRepositories();
+const secretStore = config.enableSqliteSecrets
+  ? new SqliteSecretStore({ dbPath: config.sqlitePath })
+  : null;
+const repositories = new InMemoryRepositories({ secretStore });
 const modelRegistry = new ModelRegistry();
 const service = new PlatformService({ repositories, modelRegistry });
 let currentPlatformToken = config.platformToken;
@@ -60,7 +64,13 @@ function requireAdmin(req, res) {
 }
 
 function safeError(res, error) {
-  sendJson(res, 400, { success: false, error: { code: "BAD_REQUEST", message: error.message } });
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "Unknown error";
+  sendJson(res, 400, { success: false, error: { code: "BAD_REQUEST", message } });
 }
 
 const server = http.createServer(async (req, res) => {

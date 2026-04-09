@@ -37,3 +37,20 @@ test("invalid expression rejected", () => {
   };
   assert.throws(() => validateAdapterSchema(adapter));
 });
+
+test("if then else expression in template passes", () => {
+  const adapter = {
+    api_slug: "search",
+    action: "query",
+    adapter_schema_version: "1.0",
+    target: {
+      url: "https://example.com/search",
+      method: "GET",
+      query_params: {
+        fullText: "{{if eq(payload.full_text, true) then 'true' else 'false'}}"
+      }
+    },
+    response_mapping: {}
+  };
+  assert.equal(validateAdapterSchema(adapter), true);
+});

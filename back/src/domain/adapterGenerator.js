@@ -53,20 +53,13 @@ export function generateAdapterFromSource({ apiSlug, action, sourceType, sourceC
       url: parsed.url,
       method: parsed.method,
       headers: {
-        Accept: "application/json",
-        Authorization: "Bearer {{secrets.api_key}}"
+        Accept: "application/json"
       },
       query_params: {},
       body: null
     },
     response_mapping: {
       data: "$"
-    },
-    auth_ref: {
-      secret_name: "api_key",
-      placement: "header",
-      key: "Authorization",
-      prefix: "Bearer "
     },
     policy: {
       timeout_ms: 8000,
@@ -127,14 +120,6 @@ function ensureAdapterDefaults(adapter, { apiSlug, action }) {
   }
   if (!merged.policy) {
     merged.policy = { timeout_ms: 8000, retry: { max_attempts: 1 } };
-  }
-  if (!merged.auth_ref) {
-    merged.auth_ref = {
-      secret_name: "api_key",
-      placement: "header",
-      key: "Authorization",
-      prefix: "Bearer "
-    };
   }
   return merged;
 }

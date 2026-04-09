@@ -7,8 +7,7 @@ const ADAPTER_SCHEMA_TEMPLATE = {
     url: "https://example.com/path",
     method: "GET|POST|PUT|PATCH|DELETE|HEAD",
     headers: {
-      Accept: "application/json",
-      Authorization: "Bearer {{secrets.api_key}}"
+      Accept: "application/json"
     },
     query_params: {
       any_field: "{{payload.some_field}}"
@@ -23,7 +22,7 @@ const ADAPTER_SCHEMA_TEMPLATE = {
     placement: "header|query",
     key: "Authorization|appid",
     prefix: "Bearer "
-  },
+  }, // optional, include only when upstream auth is required
   policy: {
     timeout_ms: 8000,
     retry: {
@@ -40,8 +39,9 @@ export function buildSystemPrompt({ skillInstructions = "" } = {}) {
     "Never include secret values, only secret placeholders like {{secrets.api_key}}.",
     "Expression language is restricted to these functions: coalesce, to_string, to_number, eq, if.",
     "Use JSONPath in response_mapping for extraction.",
-    "If API auth unknown, default to Authorization header with Bearer {{secrets.api_key}}.",
-    "Adapter schema must follow exactly this structure:",
+    "If upstream API does not require auth, do NOT add Authorization header or auth_ref.",
+    "Only include auth_ref and secret placeholders when upstream auth is clearly required.",
+    "Adapter schema should follow this structure (auth_ref optional):",
     JSON.stringify(ADAPTER_SCHEMA_TEMPLATE)
   ];
   if (skillInstructions) {

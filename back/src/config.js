@@ -56,6 +56,8 @@ export const config = {
   enforceTargetReachability: process.env.ENFORCE_TARGET_REACHABILITY !== "false",
   enableSkillLibrary: process.env.ENABLE_SKILL_LIBRARY !== "false",
   skillLibraryPath: process.env.SKILL_LIBRARY_PATH ?? "skills/skill-library.json",
+  enableSqliteSecrets: process.env.ENABLE_SQLITE_SECRETS !== "false",
+  sqlitePath: process.env.SQLITE_PATH ?? "data/one-api.db",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",

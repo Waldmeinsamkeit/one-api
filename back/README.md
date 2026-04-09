@@ -26,6 +26,25 @@ node scripts/verify.js
 - `GET /v1/models`
 - `POST /v1/models/activate`
 
+## Local SQL for Secrets
+
+Secrets now support local SQLite persistence (enabled by default).
+
+Env:
+
+```env
+ENABLE_SQLITE_SECRETS=true
+SQLITE_PATH=data/one-api.db
+```
+
+Sensitive secret payload fields (`iv/ciphertext/tag`) are stored in SQLite, not in-memory only.
+
+## Troubleshooting `fetch failed`
+
+If `/v1/execute` returns `BAD_REQUEST` with an upstream network message (for example `EACCES`),
+the runtime process cannot reach the upstream host/port from your current environment.
+This is a network egress/connectivity issue, not adapter mapping logic.
+
 ## Skill Library (Prompt-time)
 
 - Config file: `skills/skill-library.json`

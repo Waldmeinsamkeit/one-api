@@ -12,6 +12,58 @@ const BUILTINS = {
   if: (condition, whenTrue, whenFalse) => (condition ? whenTrue : whenFalse)
 };
 
+function findTopLevelKeyword(input, keyword) {
+  let depth = 0;
+  let quote = "";
+  const needle = ` ${keyword} `;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote && input[i - 1] !== "\\") {
+        quote = "";
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")") {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 0 && input.slice(i, i + needle.length) === needle) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function parseIfThenElse(expr) {
+  if (!expr.startsWith("if ")) {
+    return null;
+  }
+  const thenIndex = findTopLevelKeyword(expr, "then");
+  if (thenIndex === -1) {
+    return null;
+  }
+  const elseIndex = findTopLevelKeyword(expr, "else");
+  if (elseIndex === -1 || elseIndex <= thenIndex) {
+    return null;
+  }
+  const condition = expr.slice(3, thenIndex).trim();
+  const whenTrue = expr.slice(thenIndex + 6, elseIndex).trim();
+  const whenFalse = expr.slice(elseIndex + 6).trim();
+  if (!condition || !whenTrue || !whenFalse) {
+    throw new Error(`Invalid conditional expression: ${expr}`);
+  }
+  return { condition, whenTrue, whenFalse };
+}
+
 function splitArgs(input) {
   const args = [];
   let depth = 0;
@@ -93,6 +145,15 @@ export function evaluateExpression(expression, context) {
   const literal = parseLiteral(expr);
   if (literal !== undefined) {
     return literal;
+  }
+
+  const conditional = parseIfThenElse(expr);
+  if (conditional) {
+    return BUILTINS.if(
+      evaluateExpression(conditional.condition, context),
+      evaluateExpression(conditional.whenTrue, context),
+      evaluateExpression(conditional.whenFalse, context)
+    );
   }
 
   const fnMatch = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$/);

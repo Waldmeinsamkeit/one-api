@@ -9,10 +9,11 @@ function keyFor(workspaceId, apiSlug, action) {
 }
 
 export class InMemoryRepositories {
-  constructor() {
+  constructor({ secretStore = null } = {}) {
     this.adapters = [];
     this.secrets = [];
     this.executions = [];
+    this.secretStore = secretStore;
   }
 
   nextLogicVersion(workspaceId, apiSlug, action) {
@@ -131,6 +132,9 @@ export class InMemoryRepositories {
   }
 
   upsertSecret(secret) {
+    if (this.secretStore) {
+      return this.secretStore.upsertSecret(secret);
+    }
     const idx = this.secrets.findIndex(
       (s) => s.workspace_id === secret.workspace_id && s.name === secret.name
     );
@@ -144,10 +148,16 @@ export class InMemoryRepositories {
   }
 
   getSecret(workspaceId, name) {
+    if (this.secretStore) {
+      return this.secretStore.getSecret(workspaceId, name);
+    }
     return this.secrets.find((s) => s.workspace_id === workspaceId && s.name === name) ?? null;
   }
 
   listSecrets(workspaceId) {
+    if (this.secretStore) {
+      return this.secretStore.listSecrets(workspaceId);
+    }
     return this.secrets
       .filter((s) => s.workspace_id === workspaceId)
       .map((s) => ({

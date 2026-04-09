@@ -29,6 +29,24 @@ function pretty(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
+function formatUpdatedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
+function adapterStatusClass(status: AdapterRecord["status"]) {
+  if (status === "active") {
+    return "bg-emerald-100 text-emerald-700 border border-emerald-200";
+  }
+  if (status === "archived") {
+    return "bg-slate-200 text-slate-600 border border-slate-300";
+  }
+  return "bg-amber-100 text-amber-700 border border-amber-200";
+}
+
 function parsePayloadKeys(adapter: AdapterRecord | null) {
   if (!adapter?.spec) {
     return [];
@@ -36,6 +54,34 @@ function parsePayloadKeys(adapter: AdapterRecord | null) {
   const text = pretty(adapter.spec);
   const matches = [...text.matchAll(/\{\{payload\.([a-zA-Z0-9_]+)\}\}/g)];
   return [...new Set(matches.map((m) => m[1]))];
+}
+
+function buildExecuteRequestExport(adapter: AdapterRecord, token: string, workspace: string) {
+  const payloadKeys = parsePayloadKeys(adapter);
+  const payload: Record<string, string> = {};
+  if (payloadKeys.length === 0) {
+    payload.example_field = "<value>";
+  } else {
+    payloadKeys.forEach((key) => {
+      payload[key] = `<${key}>`;
+    });
+  }
+  const body = {
+    api_slug: adapter.api_slug,
+    action: adapter.action,
+    payload
+  };
+  const bodyJson = JSON.stringify(body);
+  const bodyForCmd = bodyJson.replace(/"/g, '\\"');
+  const bodyForPowerShell = bodyJson.replace(/'/g, "''");
+  const bodyForBash = bodyJson.replace(/'/g, "'\\''");
+  const url = `${API_BASE}/v1/execute`;
+
+  const curlCmd = `curl.exe -X POST "${url}" -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -H "x-workspace-id: ${workspace}" -d "${bodyForCmd}"`;
+  const curlPowerShell = `curl -X POST "${url}" -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -H "x-workspace-id: ${workspace}" -d '${bodyForPowerShell}'`;
+  const curlBash = `curl -X POST '${url}' -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' -H 'x-workspace-id: ${workspace}' -d '${bodyForBash}'`;
+
+  return `# Windows CMD\n${curlCmd}\n\n# PowerShell\n${curlPowerShell}\n\n# Bash/Zsh\n${curlBash}\n\n# JSON Body\n${pretty(body)}`;
 }
 
 function App() {
@@ -218,12 +264,24 @@ function App() {
         playTempSecret ? { api_key: playTempSecret } : {}
       );
       setPlayResult(result);
-      setNotice("Dry Run 执行完成，日志已记录。");
+      setNotice("Sandbox Test 执行完成，日志已记录。");
       await refreshLogs();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setPlayRunning(false);
+    }
+  }
+
+  async function onExportExecuteRequest(adapter: AdapterRecord) {
+    setError("");
+    setNotice("");
+    try {
+      const text = buildExecuteRequestExport(adapter, token, workspace);
+      await copyText(text);
+      setNotice("可调用 API 请求格式已复制。");
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -434,26 +492,68 @@ function App() {
                         className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
                       >
                         <Play size={14} />
-                        Play
+                        Sandbox Test
+                      </button>
+                      <button
+                        onClick={() => onExportExecuteRequest(generated)}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      >
+                        <Copy size={14} />
+                        导出请求
                       </button>
                     </div>
                   </>
                 )}
 
                 <h3 className="mt-6 mb-2 text-sm font-semibold">适配器列表</h3>
-                <div className="space-y-2 overflow-auto max-h-52 pr-1">
+                <div className="max-h-72 space-y-3 overflow-auto pr-1">
+                  {adapters.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
+                      暂无适配器，先在左侧生成并发布一个版本。
+                    </div>
+                  )}
                   {adapters.map((item) => (
-                    <div key={item.id} className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <div>{item.api_slug} / {item.action}</div>
-                        <span className={cn("rounded px-1.5 py-0.5", item.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                    <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {item.api_slug} / {item.action}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5">v{item.logic_version}</span>
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5">schema {item.adapter_schema_version}</span>
+                            <span>更新于 {formatUpdatedAt(item.updated_at)}</span>
+                          </div>
+                        </div>
+                        <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-medium", adapterStatusClass(item.status))}>
                           {item.status}
                         </span>
                       </div>
-                      <div className="mt-1 flex gap-2">
-                        <button onClick={() => onPublish(item.id)} className="text-accent">发布</button>
-                        <button onClick={() => openPlay(item)} className="text-slate-700">Play</button>
-                        <button onClick={() => setGenerated(item)} className="text-slate-700">预览</button>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => onPublish(item.id)}
+                          className="rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white"
+                        >
+                          发布
+                        </button>
+                        <button
+                          onClick={() => openPlay(item)}
+                          className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-700"
+                        >
+                          Sandbox Test
+                        </button>
+                        <button
+                          onClick={() => onExportExecuteRequest(item)}
+                          className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-700"
+                        >
+                          导出请求
+                        </button>
+                        <button
+                          onClick={() => setGenerated(item)}
+                          className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-700"
+                        >
+                          预览
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -662,7 +762,7 @@ Content-Type: application/json
       {playAdapter && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40">
           <div className="w-[680px] rounded-xl bg-white p-4 shadow-2xl">
-            <h3 className="mb-2 text-lg font-semibold">Play: {playAdapter.api_slug} / {playAdapter.action}</h3>
+            <h3 className="mb-2 text-lg font-semibold">Sandbox Test: {playAdapter.api_slug} / {playAdapter.action}</h3>
             <div className="mb-2 text-xs text-slate-500">自动推导 Payload 字段，可按需修改</div>
             <div className="grid grid-cols-2 gap-2">
               {parsePayloadKeys(playAdapter).map((k) => (
@@ -688,13 +788,13 @@ Content-Type: application/json
                 className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-2 text-sm text-white disabled:opacity-60"
               >
                 {playRunning ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} />}
-                运行 Dry Run
+                运行 Sandbox Test
               </button>
               <button onClick={() => setPlayAdapter(null)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
                 关闭
               </button>
             </div>
-            {playResult && (
+            {Boolean(playResult) && (
               <pre className="mt-3 max-h-72 overflow-auto rounded bg-slate-900 p-2 text-xs text-slate-100">{pretty(playResult)}</pre>
             )}
           </div>

@@ -29,6 +29,28 @@ function sanitizeHeaders(headers) {
   return out;
 }
 
+function collectSecretNames(value, out = new Set()) {
+  if (typeof value === "string") {
+    const matches = [...value.matchAll(/\{\{\s*secrets\.([a-zA-Z0-9_]+)\s*\}\}/g)];
+    for (const match of matches) {
+      out.add(match[1]);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectSecretNames(item, out);
+    }
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const nested of Object.values(value)) {
+      collectSecretNames(nested, out);
+    }
+  }
+  return out;
+}
+
 export class PlatformService {
   constructor({ repositories, modelRegistry }) {
     this.repositories = repositories;
@@ -255,13 +277,13 @@ export class PlatformService {
 
   resolveSecrets(workspaceId, spec) {
     const secrets = {};
-    const authSecretName = spec.auth_ref?.secret_name;
-    if (authSecretName) {
-      const record = this.repositories.getSecret(workspaceId, authSecretName);
+    const secretNames = [...collectSecretNames(spec.target)];
+    for (const secretName of secretNames) {
+      const record = this.repositories.getSecret(workspaceId, secretName);
       if (!record) {
-        throw new Error(`Missing secret: ${authSecretName}`);
+        throw new Error(`Missing secret: ${secretName}`);
       }
-      secrets[authSecretName] = decryptSecret(record, config.masterKey);
+      secrets[secretName] = decryptSecret(record, config.masterKey);
     }
     return secrets;
   }
