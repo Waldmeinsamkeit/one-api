@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Rocket,
   Save,
+  ShieldCheck,
   Trash2
 } from "lucide-react";
 import { ApiClient } from "./lib/api";
@@ -22,7 +23,7 @@ import type { AdapterRecord, ExecutionRecord, SecretRecord, ViewKey } from "./li
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3000";
 const TOKEN_KEY = "oneapi.platform_token";
-const WORKSPACE_KEY = "oneapi.workspace";
+const FIXED_WORKSPACE = import.meta.env.VITE_WORKSPACE_ID ?? "default";
 
 const DEFAULT_CURL = `curl https://jsonplaceholder.typicode.com/posts -d '{"title":"foo","body":"bar","userId":1}' -H "Content-type: application/json"`;
 
@@ -88,7 +89,7 @@ function buildExecuteRequestExport(adapter: AdapterRecord, token: string, worksp
 function App() {
   const [view, setView] = useState<ViewKey>("adapters");
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY) ?? "dev-token");
-  const [workspace, setWorkspace] = useState(localStorage.getItem(WORKSPACE_KEY) ?? "default");
+  const workspace = FIXED_WORKSPACE;
 
   const api = useMemo(() => new ApiClient(API_BASE, token, workspace), [token, workspace]);
 
@@ -123,8 +124,23 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(WORKSPACE_KEY, workspace);
-  }, [token, workspace]);
+  }, [token]);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    const timer = setTimeout(() => setError(""), 4000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+    const timer = setTimeout(() => setNotice(""), 3000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   async function refreshAdapters() {
     try {
@@ -336,29 +352,27 @@ function App() {
       </aside>
 
       <main className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white/70 px-6 py-3 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold">Workspace</span>
-            <input
-              value={workspace}
-              onChange={(e) => setWorkspace(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-            />
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
+              Workspace: {workspace}
+            </span>
             <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
-              当前模型: {activeModel ? `${activeModel.provider}/${activeModel.model}` : "未获取"}
+              Model: {activeModel ? `${activeModel.provider}/${activeModel.model}` : "未获取"}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1 shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
+              <ShieldCheck size={12} />
+              Token
+            </span>
             <input
               value={showTokenPlain ? token : tokenMasked || (token ? `${token.slice(0, 4)}...${token.slice(-4)}` : "")}
               onChange={(e) => setToken(e.target.value)}
-              className="w-72 rounded-md border border-slate-300 px-2 py-1 text-sm"
+              className="w-64 rounded-md border border-slate-300 px-2 py-1 text-xs"
               readOnly={!showTokenPlain}
             />
-            <button
-              onClick={() => setShowTokenPlain((v) => !v)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
-            >
+            <button onClick={() => setShowTokenPlain((v) => !v)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
               {showTokenPlain ? "隐藏" : "显示"}
             </button>
             <button
@@ -368,10 +382,10 @@ function App() {
                 setTimeout(() => setTokenCopied(false), 1200);
                 setNotice("Token 已复制");
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
             >
-              {tokenCopied ? <Check size={14} /> : <Copy size={14} />}
-              {tokenCopied ? "已复制" : "复制Token"}
+              {tokenCopied ? <Check size={12} /> : <Copy size={12} />}
+              {tokenCopied ? "已复制" : "复制"}
             </button>
             <button
               onClick={async () => {
@@ -387,36 +401,35 @@ function App() {
                   setError((e as Error).message);
                 }
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
               title="Rotate Token"
             >
-              <RefreshCw size={14} />
-              重置Token
+              <RefreshCw size={12} />
+              重置
             </button>
-            <button
-              onClick={refreshActiveModel}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm"
-            >
+            <button onClick={refreshActiveModel} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
               刷新模型
             </button>
           </div>
         </header>
 
-        {error && (
-          <div className="mx-6 mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-600">
-            {error}
-          </div>
-        )}
-        {notice && (
-          <div className="mx-6 mt-4 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            {notice}
-          </div>
-        )}
+        <div className="pointer-events-none fixed right-5 top-5 z-50 flex w-[360px] flex-col gap-2">
+          {notice && (
+            <div className="pointer-events-auto rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 shadow-sm">
+              {notice}
+            </div>
+          )}
+          {error && (
+            <div className="pointer-events-auto rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 shadow-sm">
+              {error}
+            </div>
+          )}
+        </div>
 
         <section className="flex-1 p-6">
           {view === "adapters" && (
             <div className="grid h-full grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Adapter 生成器</h2>
                   <div className="flex gap-1">
@@ -434,51 +447,66 @@ function App() {
                     ))}
                   </div>
                 </div>
-                <div className="mb-3 grid grid-cols-2 gap-2">
-                  <input
-                    value={apiSlug}
-                    onChange={(e) => setApiSlug(e.target.value)}
-                    placeholder="api_slug"
-                    className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                  />
-                  <input
-                    value={action}
-                    onChange={(e) => setAction(e.target.value)}
-                    placeholder="action"
-                    className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                  />
+                <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">Step 1 · 基础参数</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={apiSlug}
+                      onChange={(e) => setApiSlug(e.target.value)}
+                      placeholder="api_slug"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <input
+                      value={action}
+                      onChange={(e) => setAction(e.target.value)}
+                      placeholder="action"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    />
+                  </div>
                 </div>
                 <div className="mb-2 text-xs text-slate-500">
-                  `api_slug` 用于标识某个第三方服务（如 `openweather`）；`action` 用于标识具体能力（如 `get_current_weather`）。
+                  <div>`api_slug` 用于标识某个第三方服务（如 `openweather`）</div>
+                  <div>`action` 用于标识具体能力（如 `get_current_weather`）</div>
                 </div>
-                <textarea
-                  value={targetFormat}
-                  onChange={(e) => setTargetFormat(e.target.value)}
-                  className="mb-3 h-20 w-full rounded-md border border-slate-300 p-2 text-xs"
-                  placeholder="可选：目标统一格式(JSON)"
-                />
+                <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">Step 2 · 目标统一格式</div>
+                  <textarea
+                    value={targetFormat}
+                    onChange={(e) => setTargetFormat(e.target.value)}
+                    className="h-20 w-full rounded-md border border-slate-300 p-2 text-xs"
+                    placeholder="可选：目标统一格式(JSON)"
+                  />
+                </div>
                 <div className="mb-3 text-xs text-slate-500">
                   目标统一格式用于告诉模型你期望的入参与出参结构；不填则使用系统默认格式。
                 </div>
-                <Editor
-                  height="360px"
-                  defaultLanguage={sourceType === "openapi" ? "json" : "shell"}
-                  language={sourceType === "openapi" ? "json" : "shell"}
-                  value={source}
-                  onChange={(v) => setSource(v || "")}
-                  options={{ minimap: { enabled: false }, fontSize: 13 }}
-                />
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">Step 3 · 源信息输入</div>
+                  <input
+                    type="hidden"
+                    value={sourceType}
+                    readOnly
+                  />
+                  <Editor
+                    height="340px"
+                    defaultLanguage={sourceType === "openapi" ? "json" : "shell"}
+                    language={sourceType === "openapi" ? "json" : "shell"}
+                    value={source}
+                    onChange={(v) => setSource(v || "")}
+                    options={{ minimap: { enabled: false }, fontSize: 13 }}
+                  />
+                </div>
                 <button
                   onClick={onGenerate}
                   disabled={generating}
-                  className="mt-3 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
                   {generating ? <LoaderCircle className="animate-spin" size={14} /> : <Activity size={14} />}
                   Generate Adapter
                 </button>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="mb-3 text-lg font-semibold">AI Preview</h2>
                 {generating && sourceType === "openapi" && (
                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
