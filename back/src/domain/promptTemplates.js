@@ -17,6 +17,12 @@ const ADAPTER_SCHEMA_TEMPLATE = {
   response_mapping: {
     data: "$"
   },
+  schema_hint: {
+    data: {
+      type: "object",
+      desc: "Mapped unified data object"
+    }
+  }, // optional lightweight metadata for mapped fields
   auth_ref: {
     secret_name: "api_key",
     placement: "header|query",
@@ -84,6 +90,7 @@ export function buildUserPrompt({ apiSlug, action, sourceType, sourceContent, ta
     requestedTarget,
     "Generate the best adapter JSON for this API and contract.",
     "Use adapter_schema_version=1.0 and logic_version=1.",
-    "If source has multiple endpoints, choose the endpoint that best matches action."
+    "If source has multiple endpoints, choose the endpoint that best matches action.",
+    "Also generate schema_hint for mapped output fields. Keep it lightweight: type/format/desc/enum/unit."
   ].join("\n");
 }

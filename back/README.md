@@ -27,6 +27,19 @@ node scripts/verify.js
 - `POST /v1/models/activate`
 - `POST /v1/models/prompt`
 
+`POST /v1/execute` supports optional:
+
+```json
+{
+  "api_slug": "weather",
+  "action": "current",
+  "payload": {},
+  "options": { "include_hint": true }
+}
+```
+
+When `include_hint=true`, response includes `meta.schema_hint` from adapter spec.
+
 ## Local SQL for Secrets
 
 Secrets, adapters, and executions now support local SQLite persistence (enabled by default).

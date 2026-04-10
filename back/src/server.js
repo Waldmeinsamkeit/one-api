@@ -543,7 +543,8 @@ const server = http.createServer(async (req, res) => {
         workspaceId,
         apiSlug: body.api_slug,
         action: body.action,
-        payload: body.payload
+        payload: body.payload,
+        options: body.options
       });
       sendJson(req, res, 200, result);
       return;

@@ -242,7 +242,7 @@ export class PlatformService {
     return result;
   }
 
-  async execute({ workspaceId, apiSlug, action, payload }) {
+  async execute({ workspaceId, apiSlug, action, payload, options = {} }) {
     const adapterRecord = this.repositories.findActiveAdapter(workspaceId, apiSlug, action);
     if (!adapterRecord) {
       throw new Error("Active adapter not found");
@@ -251,6 +251,7 @@ export class PlatformService {
       workspaceId,
       adapterRecord,
       payload,
+      includeHint: Boolean(options?.include_hint),
       persistExecution: true,
       dryRun: false
     });
@@ -260,6 +261,7 @@ export class PlatformService {
     workspaceId,
     adapterRecord,
     payload,
+    includeHint = false,
     tempSecrets = null,
     persistExecution,
     dryRun = false
@@ -310,6 +312,9 @@ export class PlatformService {
         latency_ms: latencyMs
       }
     };
+    if (includeHint) {
+      unified.meta.schema_hint = spec.schema_hint ?? {};
+    }
 
     if (persistExecution) {
       const expiration = new Date(Date.now() + config.traceRetentionDays * 24 * 60 * 60 * 1000);

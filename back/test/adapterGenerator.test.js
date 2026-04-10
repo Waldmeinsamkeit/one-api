@@ -12,4 +12,5 @@ test("fallback generated adapter does not require api_key by default", () => {
   assert.equal(adapter.target.headers.Accept, "application/json");
   assert.equal("Authorization" in adapter.target.headers, false);
   assert.equal("auth_ref" in adapter, false);
+  assert.deepEqual(adapter.schema_hint, {});
 });

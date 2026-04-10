@@ -61,6 +61,7 @@ export function generateAdapterFromSource({ apiSlug, action, sourceType, sourceC
     response_mapping: {
       data: "$"
     },
+    schema_hint: {},
     policy: {
       timeout_ms: 8000,
       retry: {
@@ -117,6 +118,9 @@ function ensureAdapterDefaults(adapter, { apiSlug, action }) {
   }
   if (!merged.response_mapping) {
     merged.response_mapping = { data: "$" };
+  }
+  if (!merged.schema_hint || typeof merged.schema_hint !== "object" || Array.isArray(merged.schema_hint)) {
+    merged.schema_hint = {};
   }
   if (!merged.policy) {
     merged.policy = { timeout_ms: 8000, retry: { max_attempts: 1 } };

@@ -56,6 +56,35 @@ function checkResponseMapping(mapping, path = "$.response_mapping") {
   }
 }
 
+function checkSchemaHint(schemaHint) {
+  if (schemaHint === undefined) {
+    return;
+  }
+  if (!schemaHint || typeof schemaHint !== "object" || Array.isArray(schemaHint)) {
+    throw new Error("schema_hint must be an object");
+  }
+  for (const [field, metadata] of Object.entries(schemaHint)) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      throw new Error(`schema_hint.${field} must be an object`);
+    }
+    if (metadata.type !== undefined && typeof metadata.type !== "string") {
+      throw new Error(`schema_hint.${field}.type must be a string`);
+    }
+    if (metadata.format !== undefined && typeof metadata.format !== "string") {
+      throw new Error(`schema_hint.${field}.format must be a string`);
+    }
+    if (metadata.desc !== undefined && typeof metadata.desc !== "string") {
+      throw new Error(`schema_hint.${field}.desc must be a string`);
+    }
+    if (metadata.unit !== undefined && typeof metadata.unit !== "string") {
+      throw new Error(`schema_hint.${field}.unit must be a string`);
+    }
+    if (metadata.enum !== undefined && !Array.isArray(metadata.enum)) {
+      throw new Error(`schema_hint.${field}.enum must be an array`);
+    }
+  }
+}
+
 export function validateAdapterSchema(adapter) {
   assertObject(adapter, "adapter");
   const required = ["api_slug", "action", "adapter_schema_version", "target", "response_mapping"];
@@ -75,6 +104,7 @@ export function validateAdapterSchema(adapter) {
   checkExpressions(adapter.target);
   checkExpressions(adapter.response_mapping);
   checkResponseMapping(adapter.response_mapping);
+  checkSchemaHint(adapter.schema_hint);
   if (adapter.request_mapping) {
     checkExpressions(adapter.request_mapping);
   }
