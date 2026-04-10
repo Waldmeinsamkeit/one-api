@@ -1,0 +1,20 @@
+# Local environment
+.env
+back/.env
+front/.env
+
+# Runtime / test temporary data
+.tmp/
+back/.tmp/
+back/data/
+.pytest_cache/
+**/__pycache__/
+
+# Frontend build / dependency cache
+front/node_modules/
+front/dist/
+front/*.tsbuildinfo
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
