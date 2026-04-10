@@ -178,6 +178,13 @@ export class ApiHttpClient {
     });
   }
 
+  adapters<T = unknown>(): Promise<T[] | undefined> {
+    return this.request({
+      method: 'GET',
+      path: '/v1/adapters',
+    });
+  }
+
   saveSecret<T = unknown>(body: SaveSecretInput): Promise<T | undefined> {
     return this.request({
       method: 'POST',

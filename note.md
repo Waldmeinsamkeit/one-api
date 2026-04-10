@@ -174,3 +174,58 @@
 - 前端 Adapters 页补全 `source_url` 输入并传参到 `/v1/adapters/generate`。
 - Logs 页新增第一版查询能力：关键字筛选、状态筛选、分页大小与翻页控制。
 - 新增 SSRF 重定向阻断测试：覆盖“公网首跳 -> 302 到 `127.0.0.1`”被拦截场景。
+
+## 10. 本次更新小结（2026-04-10，schema_hint V1）
+- 适配器契约新增可选 `schema_hint`，用于描述 `response_mapping` 输出字段元数据（type/format/desc/enum/unit）。
+- 生成链路更新：
+  - fallback 适配器默认补 `schema_hint: {}`；
+  - LLM Prompt 增加 `schema_hint` 生成指令。
+- 运行时更新：`POST /v1/execute` 支持 `options.include_hint`。
+  - 当 `include_hint=true` 时，在响应 `meta.schema_hint` 返回适配器预存提示；
+  - 默认不返回该字段，保持轻量响应。
+
+## 11. 2026-04-10 CLI V1 Progress
+- Added new package: `cli/` (Node.js + TypeScript).
+- Completed V1 commands:
+  - `av-cli init`
+  - `av-cli gen`
+  - `av-cli run`
+  - `av-cli logs`
+  - `av-cli secrets set`
+- Completed config system with precedence: `ENV > project > global`.
+- Added HTTP client layer for backend API calls:
+  - `generate`, `execute`, `executions`, `saveSecret`
+- Added local context snapshot support:
+  - `upsertPendingSnapshotFromGen`
+  - `refreshReadinessAfterSecretSet`
+- Added CLI command tests and core tests in `cli/src/**`.
+- Verification:
+  - `cd cli && npm run test` passed.
+
+## 12. 2026-04-10 MCP V1 (A + C Hybrid)
+- Added new package: `mcp/`.
+- Implemented MCP stdio server with tools:
+  - `init_config`
+  - `gen_from_curl`
+  - `adapters_list`
+  - `adapter_get`
+  - `execute_api`
+  - `secrets_set`
+  - `logs_tail`
+- Reused CLI core modules from `cli/dist/core/*`.
+- Added discovery capability (`adapters_list`, `adapter_get`) for agent self-discovery.
+- Added best-effort local snapshot payload pre-validation hook in `execute_api` when `payload_schema_hint` exists.
+- Added docs: `mcp/README.md` with Claude Desktop config example.
+- Verification:
+  - `cd cli && npm run test` passed.
+  - `cd mcp && node --check src/index.js` passed.
+
+## 13. 2026-04-10 文档与说明页优化
+- 主 README 完整补充并重排：
+  - 增加 CLI 使用说明（init/gen/run/logs/secrets）
+  - 增加 MCP 使用说明（工具列表、启动步骤、Claude Desktop 配置示例）
+- 前端 `说明` 页面改为折叠卡片式，提升可读性：
+  - 保留新版（Web 控制台、CLI、MCP、统一执行接口）
+  - 保留旧版说明内容并整合到“旧版说明（保留）”折叠区
+- 验证：
+  - `cd front && npm run build` 通过。

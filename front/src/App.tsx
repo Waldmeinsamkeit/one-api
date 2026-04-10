@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import {
   Activity,
@@ -1430,63 +1430,53 @@ function App() {
 
           {view === "guide" && (
             <div className="max-w-5xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-xl font-semibold">使用说明</h2>
-              <div className="space-y-4 text-sm leading-6 text-slate-700">
-                <section>
-                  <h3 className="mb-1 text-base font-semibold">1. 三种输入模式区别</h3>
-                  <p><strong>curl</strong>：最适合快速接入单个接口。直接粘贴命令，系统会解析 URL、方法、Header、Body。</p>
-                  <p><strong>openapi</strong>：最适合结构化文档。粘贴 OpenAPI JSON（或文档内容），模型会按 action 选择最匹配端点。</p>
-                  <p><strong>raw</strong>：最灵活。粘贴普通文档文本，或结合 source_url 让系统抓取网页后做语义解析。</p>
-                  <p className="mt-2">raw 示例（可直接粘贴到输入区）：</p>
-                  <pre className="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`Hi AI, we have this weather API. The URL is https://api.test.com/info. You need to put the city in the body as { 'location': 'city_name' }. It needs a Bearer token in the header.`}</pre>
-                </section>
+              <h2 className="mb-4 text-xl font-semibold">使用说明（折叠卡片版）</h2>
+              <div className="space-y-3 text-sm leading-6 text-slate-700">
+                <details className="rounded-lg border border-slate-200 p-4" open>
+                  <summary className="cursor-pointer text-base font-semibold">1. Web 控制台（前端）</summary>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    <li><strong>Adapters</strong>：生成、预览、发布、Sandbox Test</li>
+                    <li><strong>Secrets</strong>：录入并管理 API Key</li>
+                    <li><strong>Logs</strong>：查看执行日志、状态、耗时与调试信息</li>
+                    <li><strong>LLM</strong>：切换模型、编辑系统提示词、配置模型密钥</li>
+                  </ul>
+                </details>
 
-                <section>
-                  <h3 className="mb-1 text-base font-semibold">2. 推荐操作流程</h3>
-                  <p>在 Adapters 页填写 api_slug 和 action，粘贴源信息后点 Generate Adapter。</p>
-                  <p>先用 Play 做 Dry Run 验证映射和鉴权，再点 Publish to V1 正式发布。</p>
-                  <p>需要密钥时到 Secrets 保存 `api_key`，不要把明文写进适配器。</p>
-                </section>
+                <details className="rounded-lg border border-slate-200 p-4" open>
+                  <summary className="cursor-pointer text-base font-semibold">2. CLI 常用命令（开发者）</summary>
+                  <p className="mt-2">先在 <code>cli/</code> 下执行：<code>npm install &amp;&amp; npm run build</code></p>
+                  <pre className="mt-2 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`# 初始化
+node dist/index.js init --profile default --backend-url http://127.0.0.1:3000 --token <TOKEN> --workspace-id default
 
-                <section>
-                  <h3 className="mb-1 text-base font-semibold">2.1 Adapter 页面三个输入框怎么填</h3>
-                  <p><strong>api_slug（例如 demo_api）</strong>：填“第三方服务名称”，建议全小写+下划线，保持长期稳定。</p>
-                  <p>示例：`openweather`、`tmdb`、`notion_api`。</p>
-                  <p><strong>action（例如 execute_demo）</strong>：填“具体接口动作”，建议动词开头，表达单一能力。</p>
-                  <p>示例：`get_current_weather`、`create_post`、`list_users`。</p>
-                  <p><strong>目标统一格式(JSON)</strong>：可选。你希望转换后的统一请求/响应契约，模型会按这个契约生成映射。</p>
-                  <pre className="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`{
-  "unified_request": {
-    "api_slug": "string",
-    "action": "string",
-    "payload": {
-      "city": "string",
-      "units": "string"
-    }
-  },
-  "unified_response": {
-    "success": "boolean",
-    "data": {
-      "temp": "number",
-      "condition": "string"
-    },
-    "error": {
-      "code": "string",
-      "message": "string"
-    },
-    "meta": {
-      "upstream_status": "number",
-      "adapter_version": "number"
-    }
-  }
-}`}</pre>
-                  <p>如果你不确定怎么写，先留空。系统会用默认统一格式生成，后续再迭代 target_format。</p>
-                </section>
+# 生成适配器
+node dist/index.js gen -f ./sample.curl -t curl --api-slug reqres --action users
 
-                <section>
-                  <h3 className="mb-1 text-base font-semibold">3. 转换后如何调用</h3>
-                  <p>发布成功后，统一调用后端 `/v1/execute`：</p>
-                  <pre className="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`POST /v1/execute
+# 执行适配器
+node dist/index.js run reqres --action users --payload '{"page":2}' --include-hint
+
+# 日志
+node dist/index.js logs --tail 10
+
+# 设置密钥
+node dist/index.js secrets set openai_api_key=sk-xxxx`}</pre>
+                  <p className="mt-2">配置优先级：<code>ENV &gt; .av-cli.json &gt; 全局配置</code>。</p>
+                </details>
+
+                <details className="rounded-lg border border-slate-200 p-4" open>
+                  <summary className="cursor-pointer text-base font-semibold">3. MCP 常用工具（AI Agent）</summary>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    <li><code>init_config</code>：设置 backend/token/workspace</li>
+                    <li><code>gen_from_curl</code>：从 cURL 生成适配器</li>
+                    <li><code>adapters_list</code> / <code>adapter_get</code>：工具发现与详情读取</li>
+                    <li><code>execute_api</code>：执行统一 API（支持 include_hint）</li>
+                    <li><code>secrets_set</code>：设置密钥并刷新 readiness</li>
+                    <li><code>logs_tail</code>：读取最近执行日志</li>
+                  </ul>
+                </details>
+
+                <details className="rounded-lg border border-slate-200 p-4" open>
+                  <summary className="cursor-pointer text-base font-semibold">4. 统一执行接口示例</summary>
+                  <pre className="mt-2 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`POST /v1/execute
 Authorization: Bearer <PLATFORM_TOKEN>
 x-workspace-id: <workspace>
 Content-Type: application/json
@@ -1497,16 +1487,49 @@ Content-Type: application/json
   "payload": {
     "city": "Paris",
     "units": "celsius"
+  },
+  "options": {
+    "include_hint": true
   }
 }`}</pre>
-                  <p>返回是统一结构：`success / data / error / meta`，调用方不需要关心第三方 API 的原始形态。</p>
-                </section>
+                </details>
 
-                <section>
-                  <h3 className="mb-1 text-base font-semibold">4. 日志怎么看</h3>
-                  <p>Logs 页可看每次执行（含 Dry Run）的状态码和耗时，点击行可看：</p>
-                  <p>脱敏请求体、上游原始返回、映射后最终输出、Debug Trace。</p>
-                </section>
+                <details className="rounded-lg border border-slate-200 p-4">
+                  <summary className="cursor-pointer text-base font-semibold">5. 旧版说明（保留）</summary>
+                  <div className="mt-2 space-y-4">
+                    <section>
+                      <h4 className="text-sm font-semibold">5.1 三种输入模式区别</h4>
+                      <p><strong>curl</strong>：适合快速接入单接口，自动解析 URL/方法/Header/Body。</p>
+                      <p><strong>openapi</strong>：适合结构化文档，模型按 action 选择最匹配端点。</p>
+                      <p><strong>raw</strong>：最灵活，支持自然语言描述和 source_url 抓取解析。</p>
+                      <pre className="mt-2 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{`Hi AI, we have this weather API. The URL is https://api.test.com/info. You need to put the city in the body as { 'location': 'city_name' }. It needs a Bearer token in the header.`}</pre>
+                    </section>
+
+                    <section>
+                      <h4 className="text-sm font-semibold">5.2 推荐操作流程</h4>
+                      <p>在 Adapters 页填写 <code>api_slug</code> / <code>action</code> 后生成适配器。</p>
+                      <p>先 Sandbox Test 验证映射和鉴权，再 Publish to V1 正式发布。</p>
+                      <p>密钥统一放到 Secrets，不要把明文写到适配器。</p>
+                    </section>
+
+                    <section>
+                      <h4 className="text-sm font-semibold">5.3 Adapter 三个核心输入项</h4>
+                      <p><strong>api_slug</strong>：建议全小写+下划线，如 <code>openweather</code>。</p>
+                      <p><strong>action</strong>：建议动词开头，如 <code>get_current_weather</code>。</p>
+                      <p><strong>target_format</strong>：可选，不确定可先留空后续迭代。</p>
+                    </section>
+
+                    <section>
+                      <h4 className="text-sm font-semibold">5.4 转换后如何调用</h4>
+                      <p>发布后统一走 <code>/v1/execute</code>，返回 <code>success/data/error/meta</code>。</p>
+                    </section>
+
+                    <section>
+                      <h4 className="text-sm font-semibold">5.5 日志怎么看</h4>
+                      <p>Logs 页可查看每次执行状态码、耗时、上游响应和 Debug Trace。</p>
+                    </section>
+                  </div>
+                </details>
               </div>
             </div>
           )}
@@ -1560,3 +1583,4 @@ Content-Type: application/json
 }
 
 export default App;
+

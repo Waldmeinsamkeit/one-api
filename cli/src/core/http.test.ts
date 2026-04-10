@@ -86,6 +86,27 @@ test('ApiHttpClient executions appends limit query', async () => {
   assert.equal(capturedUrl, 'https://example.com/v1/executions?limit=25');
 });
 
+test('ApiHttpClient adapters hits list endpoint', async () => {
+  let capturedUrl = '';
+  const client = new ApiHttpClient({
+    backend_url: 'https://example.com/',
+    token: 'token-3',
+    fetch_impl: async (url) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    },
+  });
+
+  await client.adapters();
+  assert.equal(capturedUrl, 'https://example.com/v1/adapters');
+});
+
 test('ApiHttpClient allows empty success payloads', async () => {
   const client = new ApiHttpClient({
     backend_url: 'https://example.com',

@@ -17,6 +17,7 @@ front/*.tsbuildinfo
 cli/node_modules/
 cli/dist/
 cli/*.tsbuildinfo
+mcp/node_modules/
 
 # OS/editor noise
 .DS_Store
