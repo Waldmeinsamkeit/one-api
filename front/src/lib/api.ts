@@ -21,12 +21,18 @@ export class ApiClient {
   }
 
   async request<T>(path: string, options: RequestInit = {}, unwrapEnvelope = true): Promise<T> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-workspace-id": this.workspaceId
+    };
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
+      credentials: "include",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
-        "x-workspace-id": this.workspaceId,
+        ...headers,
         ...(options.headers || {})
       }
     });
@@ -115,6 +121,97 @@ export class ApiClient {
     return this.request<{ token: string; masked: string; rotated_at: string }>("/v1/platform-token/rotate", {
       method: "POST",
       body: JSON.stringify({})
+    });
+  }
+
+  getMe() {
+    return this.request<{
+      id: string;
+      provider: string;
+      provider_user_id: string;
+      username: string | null;
+      email: string | null;
+      workspace_id: string;
+    }>("/auth/me");
+  }
+
+  getLoginUrl() {
+    return `${this.baseUrl}/auth/login`;
+  }
+
+  passwordLogin(username: string, password: string) {
+    return this.request<{
+      id: string;
+      username: string;
+      workspace_id: string;
+    }>("/auth/password-login", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    });
+  }
+
+  logout() {
+    return this.request<{ logged_out: boolean }>("/auth/logout", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+  }
+
+  adminLogin(username: string, password: string) {
+    return this.request<{ username: string }>("/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    });
+  }
+
+  getAdminMe() {
+    return this.request<{
+      username: string;
+      created_at: string;
+      expires_at: string;
+    }>("/admin/me");
+  }
+
+  adminLogout() {
+    return this.request<{ logged_out: boolean }>("/admin/logout", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+  }
+
+  listAdminUsers(limit = 100, offset = 0, q = "") {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      q
+    });
+    return this.request<
+      Array<{
+        id: string;
+        provider: string;
+        provider_user_id: string;
+        username: string | null;
+        email: string | null;
+        workspace_id: string;
+        created_at: string;
+        updated_at: string;
+        last_login_at: string | null;
+      }>
+    >(`/admin/users?${params.toString()}`);
+  }
+
+  deleteAdminUser(userId: string) {
+    return this.request<{
+      user_id: string;
+      workspace_id: string;
+      purged: {
+        adapters_deleted: number;
+        executions_deleted: number;
+        secrets_deleted: number;
+      };
+    }>("/admin/users/delete", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId })
     });
   }
 }

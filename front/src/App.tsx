@@ -87,9 +87,44 @@ function buildExecuteRequestExport(adapter: AdapterRecord, token: string, worksp
 }
 
 function App() {
+  const isAdminRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
   const [view, setView] = useState<ViewKey>("adapters");
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY) ?? "dev-token");
-  const workspace = FIXED_WORKSPACE;
+  const [workspace, setWorkspace] = useState(FIXED_WORKSPACE);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [me, setMe] = useState<{
+    id: string;
+    provider: string;
+    provider_user_id: string;
+    username: string | null;
+    email: string | null;
+    workspace_id: string;
+  } | null>(null);
+  const [adminMe, setAdminMe] = useState<{
+    username: string;
+    created_at: string;
+    expires_at: string;
+  } | null>(null);
+  const [adminUsers, setAdminUsers] = useState<
+    Array<{
+      id: string;
+      provider: string;
+      provider_user_id: string;
+      username: string | null;
+      email: string | null;
+      workspace_id: string;
+      created_at: string;
+      updated_at: string;
+      last_login_at: string | null;
+    }>
+  >([]);
+  const [adminLoginForm, setAdminLoginForm] = useState({ username: "admin", password: "" });
+  const [adminLoggingIn, setAdminLoggingIn] = useState(false);
+  const [adminLoadingUsers, setAdminLoadingUsers] = useState(false);
+  const [adminDeletingUser, setAdminDeletingUser] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [passwordLoginForm, setPasswordLoginForm] = useState({ username: "", password: "" });
+  const [passwordLoggingIn, setPasswordLoggingIn] = useState(false);
 
   const api = useMemo(() => new ApiClient(API_BASE, token, workspace), [token, workspace]);
 
@@ -125,6 +160,55 @@ function App() {
   useEffect(() => {
     localStorage.setItem(TOKEN_KEY, token);
   }, [token]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (isAdminRoute) {
+      api
+        .getAdminMe()
+        .then((admin) => {
+          if (!mounted) {
+            return;
+          }
+          setAdminMe(admin);
+        })
+        .catch(() => {
+          if (!mounted) {
+            return;
+          }
+          setAdminMe(null);
+        })
+        .finally(() => {
+          if (mounted) {
+            setAuthChecked(true);
+          }
+        });
+    } else {
+      api
+        .getMe()
+        .then((user) => {
+          if (!mounted) {
+            return;
+          }
+          setMe(user);
+          setWorkspace(user.workspace_id || FIXED_WORKSPACE);
+        })
+        .catch(() => {
+          if (!mounted) {
+            return;
+          }
+          setMe(null);
+        })
+        .finally(() => {
+          if (mounted) {
+            setAuthChecked(true);
+          }
+        });
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [api, isAdminRoute]);
 
   useEffect(() => {
     if (!error) {
@@ -189,13 +273,84 @@ function App() {
   }
 
   useEffect(() => {
+    if (isAdminRoute || !me) {
+      return;
+    }
     refreshAdapters();
     refreshSecrets();
     refreshLogs();
     refreshActiveModel();
     refreshTokenInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, workspace]);
+  }, [token, workspace, me?.id, isAdminRoute]);
+
+  async function refreshAdminUsers(search = adminSearch) {
+    try {
+      setAdminLoadingUsers(true);
+      setAdminUsers(await api.listAdminUsers(200, 0, search));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAdminLoadingUsers(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isAdminRoute || !adminMe) {
+      return;
+    }
+    refreshAdminUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminMe?.username, isAdminRoute]);
+
+  async function onAdminLogin() {
+    setError("");
+    setNotice("");
+    setAdminLoggingIn(true);
+    try {
+      await api.adminLogin(adminLoginForm.username, adminLoginForm.password);
+      const admin = await api.getAdminMe();
+      setAdminMe(admin);
+      setNotice("管理员登录成功");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAdminLoggingIn(false);
+    }
+  }
+
+  async function onAdminLogout() {
+    setError("");
+    setNotice("");
+    try {
+      await api.adminLogout();
+      setAdminMe(null);
+      setAdminUsers([]);
+      setNotice("管理员已退出");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function onDeleteAdminUser(userId: string, label: string) {
+    if (!window.confirm(`确认删除用户 ${label} ? 这会清理其 workspace 数据。`)) {
+      return;
+    }
+    setError("");
+    setNotice("");
+    setAdminDeletingUser(userId);
+    try {
+      const result = await api.deleteAdminUser(userId);
+      setNotice(
+        `用户已删除，清理 adapters=${result.purged.adapters_deleted}, executions=${result.purged.executions_deleted}, secrets=${result.purged.secrets_deleted}`
+      );
+      await refreshAdminUsers();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAdminDeletingUser("");
+    }
+  }
 
   async function onGenerate() {
     setError("");
@@ -217,6 +372,27 @@ function App() {
       setError((e as Error).message);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function onPasswordLogin() {
+    setError("");
+    setNotice("");
+    if (passwordLoginForm.username.trim().toLowerCase() === "admin") {
+      setError("管理员账号请使用 /admin 入口登录。");
+      return;
+    }
+    setPasswordLoggingIn(true);
+    try {
+      await api.passwordLogin(passwordLoginForm.username, passwordLoginForm.password);
+      const user = await api.getMe();
+      setMe(user);
+      setWorkspace(user.workspace_id || FIXED_WORKSPACE);
+      setNotice("账号登录成功");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPasswordLoggingIn(false);
     }
   }
 
@@ -322,6 +498,196 @@ function App() {
   }
 
   return (
+    !authChecked ? (
+      <div className="grid min-h-screen place-items-center bg-slate-50">
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-sm">
+          正在检查{isAdminRoute ? "管理员" : "登录"}状态...
+        </div>
+      </div>
+    ) : isAdminRoute ? (
+      !adminMe ? (
+        <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h1 className="text-xl font-semibold text-slate-900">管理员登录</h1>
+              <p className="mt-2 text-sm text-slate-600">仅允许本机访问，登录后可查看并删除用户</p>
+            </div>
+            <div className="space-y-3">
+              <input
+                value={adminLoginForm.username}
+                onChange={(e) => setAdminLoginForm((prev) => ({ ...prev, username: e.target.value }))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="管理员账号"
+              />
+              <input
+                type="password"
+                value={adminLoginForm.password}
+                onChange={(e) => setAdminLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="管理员密码"
+              />
+              <button
+                onClick={onAdminLogin}
+                disabled={adminLoggingIn}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {adminLoggingIn ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                登录管理后台
+              </button>
+            </div>
+            <div className="mt-4 text-xs text-slate-500">地址需从本机访问，否则后端会拒绝登录</div>
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen bg-slate-50">
+          <div className="pointer-events-none fixed right-5 top-5 z-50 flex w-[420px] flex-col gap-2">
+            {notice && (
+              <div className="pointer-events-auto rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 shadow-sm">
+                {notice}
+              </div>
+            )}
+            {error && (
+              <div className="pointer-events-auto rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 shadow-sm">
+                {error}
+              </div>
+            )}
+          </div>
+
+          <div className="mx-auto max-w-7xl px-6 py-8">
+            <div className="mb-6 flex items-end justify-between">
+              <div>
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Admin Console</div>
+                <h1 className="mt-2 text-3xl font-semibold text-slate-900">用户管理</h1>
+                <p className="mt-2 text-sm text-slate-600">
+                  当前管理员: {adminMe.username}，会话到期时间 {formatUpdatedAt(adminMe.expires_at)}
+                </p>
+              </div>
+              <button
+                onClick={onAdminLogout}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+              >
+                退出管理后台
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">用户列表</h2>
+                  <p className="mt-1 text-xs text-slate-500">支持按用户名、邮箱、provider user id 搜索</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={adminSearch}
+                    onChange={(e) => setAdminSearch(e.target.value)}
+                    className="w-72 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="搜索用户"
+                  />
+                  <button
+                    onClick={() => refreshAdminUsers(adminSearch)}
+                    disabled={adminLoadingUsers}
+                    className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
+                  >
+                    {adminLoadingUsers ? "加载中..." : "查询"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                      <th className="py-3 pl-3">用户</th>
+                      <th>Provider</th>
+                      <th>Workspace</th>
+                      <th>最近登录</th>
+                      <th>创建时间</th>
+                      <th className="pr-3 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminUsers.length === 0 && !adminLoadingUsers && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-10 text-center text-sm text-slate-500">
+                          暂无用户数据
+                        </td>
+                      </tr>
+                    )}
+                    {adminUsers.map((user) => {
+                      const label = user.username || user.email || user.provider_user_id;
+                      return (
+                        <tr key={user.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/70">
+                          <td className="py-3 pl-3">
+                            <div className="font-medium text-slate-900">{label}</div>
+                            <div className="text-xs text-slate-500">{user.email || user.provider_user_id}</div>
+                          </td>
+                          <td>{user.provider}</td>
+                          <td className="text-xs text-slate-600">{user.workspace_id}</td>
+                          <td className="text-xs text-slate-600">
+                            {user.last_login_at ? formatUpdatedAt(user.last_login_at) : "从未"}
+                          </td>
+                          <td className="text-xs text-slate-600">{formatUpdatedAt(user.created_at)}</td>
+                          <td className="pr-3 text-right">
+                            <button
+                              onClick={() => onDeleteAdminUser(user.id, label)}
+                              disabled={adminDeletingUser === user.id}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700 disabled:opacity-60"
+                            >
+                              {adminDeletingUser === user.id ? <LoaderCircle size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                              删除用户
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    ) : !me ? (
+      <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-900">one-api 登录</h1>
+          <p className="mt-2 text-sm text-slate-600">支持 Linux.do OAuth 登录，也支持账号密码登录。</p>
+          <a
+            href={api.getLoginUrl()}
+            className="mt-5 inline-flex w-full items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+          >
+            使用 Linux.do 登录
+          </a>
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 text-sm font-medium text-slate-900">账号密码登录</div>
+            <div className="mb-2 text-xs text-slate-500">管理员账号请访问 /admin 登录。</div>
+            <div className="space-y-2">
+              <input
+                value={passwordLoginForm.username}
+                onChange={(e) => setPasswordLoginForm((prev) => ({ ...prev, username: e.target.value }))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="用户名"
+              />
+              <input
+                type="password"
+                value={passwordLoginForm.password}
+                onChange={(e) => setPasswordLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="密码"
+              />
+              <button
+                onClick={onPasswordLogin}
+                disabled={passwordLoggingIn}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 disabled:opacity-60"
+              >
+                {passwordLoggingIn ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                使用账号密码登录
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : (
     <div className="flex min-h-screen text-foreground">
       <aside className="w-20 border-r border-slate-200 bg-white/80 backdrop-blur">
         <div className="flex h-full flex-col items-center py-4">
@@ -356,6 +722,9 @@ function App() {
           <div className="flex items-center gap-2">
             <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
               Workspace: {workspace}
+            </span>
+            <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
+              User: {me.username || me.email || me.provider_user_id}
             </span>
             <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
               Model: {activeModel ? `${activeModel.provider}/${activeModel.model}` : "未获取"}
@@ -409,6 +778,16 @@ function App() {
             </button>
             <button onClick={refreshActiveModel} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
               刷新模型
+            </button>
+            <button
+              onClick={async () => {
+                await api.logout();
+                setMe(null);
+                setAuthChecked(true);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            >
+              退出
             </button>
           </div>
         </header>
@@ -883,6 +1262,7 @@ Content-Type: application/json
         </div>
       )}
     </div>
+    )
   );
 }
 

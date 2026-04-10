@@ -200,6 +200,34 @@ export class InMemoryRepositories {
     return true;
   }
 
+  deleteWorkspaceData(workspaceId) {
+    const beforeAdapters = this.adapters.length;
+    const beforeExecutions = this.executions.length;
+    this.adapters = this.adapters.filter((a) => a.workspace_id !== workspaceId);
+    this.executions = this.executions.filter((e) => e.workspace_id !== workspaceId);
+    if (beforeAdapters !== this.adapters.length) {
+      this.persistAdapters();
+    }
+    if (beforeExecutions !== this.executions.length) {
+      this.persistExecutions();
+    }
+
+    let deletedSecrets = 0;
+    if (this.secretStore?.deleteSecretsByWorkspace) {
+      deletedSecrets = this.secretStore.deleteSecretsByWorkspace(workspaceId);
+    } else {
+      const beforeSecrets = this.secrets.length;
+      this.secrets = this.secrets.filter((s) => s.workspace_id !== workspaceId);
+      deletedSecrets = beforeSecrets - this.secrets.length;
+    }
+
+    return {
+      adapters_deleted: beforeAdapters - this.adapters.length,
+      executions_deleted: beforeExecutions - this.executions.length,
+      secrets_deleted: deletedSecrets
+    };
+  }
+
   createExecution(execution) {
     const record = {
       id: crypto.randomUUID(),

@@ -122,3 +122,40 @@
 
 ### 后期目标（暂不执行）
 - [ ] `POST /v1/platform-token/rotate` 权限收紧（加入 admin 校验）。
+
+## 8. 今日进展（2026-04-09，认证与管理员）
+### 已完成
+- Linux.do OAuth 用户登录链路（后端 + 最小前端门禁）：
+  - 后端新增：`/auth/login`、`/auth/callback`、`/auth/me`、`/auth/logout`。
+  - 会话存储：SQLite `users/sessions` 表，首次登录自动创建用户并自动分配唯一 `workspace_id`（每用户一个 workspace）。
+  - API 鉴权改为：优先 Cookie 会话，兼容旧 Bearer token。
+  - 前端新增最小登录页：未登录仅显示“使用 Linux.do 登录”按钮；登录后进入原控制台。
+- 管理员 M1（后端）：
+  - 新增管理员登录链路：`/admin/login`、`/admin/me`、`/admin/logout`。
+  - 管理员登录限制为本机 IP：仅 `127.0.0.1` / `::1` / `::ffff:127.0.0.1`。
+  - 新增管理员会话表 `admin_sessions`（SQLite 持久化）。
+- 管理员 M2（后端）：
+  - 新增用户管理接口：`GET /admin/users`、`POST /admin/users/delete`。
+  - 删除用户时会级联清理其 workspace 数据：`secrets/adapters/executions` + 用户会话。
+- 配置与文档：
+  - 新增 OAuth/管理员相关环境变量（`config.js`）。
+  - `back/README.md` 已补充 OAuth 与管理员接口说明。
+- 测试：
+  - 新增并通过：`test/sqliteAuthStore.test.js`、`test/ip.test.js`、`test/repositories.workspace-delete.test.js`。
+  - 自检通过：`node scripts/verify.js`。
+
+### 明日待办（继续）
+- [x] M3：前端最小管理员页面（登录、用户列表、删除用户按钮）。
+  - `/admin` 路径下启用管理员模式。
+  - 未登录显示最小管理员登录页。
+  - 登录后展示用户列表、搜索框、删除用户按钮。
+- [x] M4（第一阶段）：联调与上线测试脚本（内网穿透回调、Cookie/CORS 配置能力）。
+  - 新增 `scripts/verify-auth-deploy.js`，用于检查 OAuth/Admin/CORS/Cookie 必填配置。
+  - 后端 CORS 改为显式白名单：`CORS_ALLOWED_ORIGINS`。
+  - Cookie 策略改为可配置：
+    - `SESSION_COOKIE_SAME_SITE`
+    - `ADMIN_SESSION_COOKIE_SAME_SITE`
+    - `COOKIE_SECURE_MODE`
+  - `README.md` 已补内网穿透 + OAuth 测试说明。
+- [ ] M4（第二阶段）：真实联调验证（待填正式 OAuth/Admin 环境变量后执行）。
+- 补充：管理操作审计日志（谁在何时删除了哪个用户）与失败重试/限流策略。

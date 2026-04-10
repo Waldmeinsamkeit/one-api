@@ -41,6 +41,90 @@ SQLITE_PATH=data/one-api.db
 Sensitive secret payload fields (`iv/ciphertext/tag`) are stored in SQLite, not in-memory only.
 Adapter drafts/active versions and execution logs are also restored after restart.
 
+## OAuth Login (Linux.do)
+
+The backend can run with OAuth login + cookie session (recommended for web UI testing).
+
+```env
+AUTH_ENABLED=true
+OAUTH_PROVIDER_NAME=linuxdo
+OAUTH_CLIENT_ID=...
+OAUTH_CLIENT_SECRET=...
+OAUTH_AUTH_URL=...
+OAUTH_TOKEN_URL=...
+OAUTH_USERINFO_URL=...
+OAUTH_SCOPE=openid profile email
+OAUTH_CALLBACK_URL=https://<your-domain>/auth/callback
+AUTH_SUCCESS_REDIRECT=https://<your-frontend-domain>
+CORS_ALLOWED_ORIGINS=https://<your-frontend-domain>,http://localhost:5173
+SESSION_COOKIE_NAME=oneapi_session
+SESSION_TTL_DAYS=7
+SESSION_COOKIE_SAME_SITE=Lax
+COOKIE_SECURE_MODE=auto
+```
+
+Endpoints:
+- `GET /auth/login`
+- `GET /auth/callback`
+- `GET /auth/me`
+- `POST /auth/logout`
+- `POST /auth/password-login` (`{ "username": "...", "password": "..." }`)
+
+Local password login uses SQLite users (provider=`local`).
+To enable local password login endpoint:
+
+```env
+LOCAL_PASSWORD_AUTH_ENABLED=true
+```
+
+Password is stored in `users.local_password_hash`.
+Supported formats:
+- `scrypt$<salt_hex>$<hash_hex>` (recommended)
+- `plain:<password>` (for quick local tests only)
+
+Deploy check:
+
+```bash
+node scripts/verify-auth-deploy.js
+```
+
+## Local Admin Login (M1)
+
+Admin login is password-based and restricted to localhost IP (`127.0.0.1` / `::1`).
+
+```env
+ENABLE_ADMIN_AUTH=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change_me
+ADMIN_SESSION_COOKIE_NAME=oneapi_admin_session
+ADMIN_SESSION_TTL_DAYS=1
+ADMIN_SESSION_COOKIE_SAME_SITE=Lax
+```
+
+Endpoints:
+- `POST /admin/login` (`{ "username": "...", "password": "..." }`)
+- `GET /admin/me`
+- `POST /admin/logout`
+- `GET /admin/users?limit=100&offset=0&q=keyword`
+- `POST /admin/users/delete` (`{ "user_id": "..." }`)
+
+## Tunnel / OAuth Test Notes
+
+Recommended for test:
+1. Expose backend with a stable HTTPS tunnel URL.
+2. Set `OAUTH_CALLBACK_URL=https://<backend-tunnel>/auth/callback`.
+3. Set `AUTH_SUCCESS_REDIRECT=https://<frontend-domain-or-tunnel>`.
+4. Add the frontend origin to `CORS_ALLOWED_ORIGINS`.
+5. If frontend and backend are truly cross-site, use:
+
+```env
+SESSION_COOKIE_SAME_SITE=None
+COOKIE_SECURE_MODE=true
+ADMIN_SESSION_COOKIE_SAME_SITE=None
+```
+
+For same-site local dev (`localhost`/same domain), `Lax` is preferred.
+
 ## Troubleshooting `fetch failed`
 
 If `/v1/execute` returns `BAD_REQUEST` with an upstream network message (for example `EACCES`),

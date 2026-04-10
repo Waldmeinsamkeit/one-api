@@ -333,4 +333,11 @@ export class PlatformService {
   reviewPublicAdapter({ adapterId, approved }) {
     return this.repositories.reviewAdapter(adapterId, approved);
   }
+
+  deleteWorkspaceData(workspaceId) {
+    if (!workspaceId) {
+      throw new Error("workspaceId is required");
+    }
+    return this.repositories.deleteWorkspaceData(workspaceId);
+  }
 }
