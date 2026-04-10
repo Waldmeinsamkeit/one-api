@@ -3,6 +3,7 @@ import Editor from "@monaco-editor/react";
 import {
   Activity,
   BookOpenText,
+  Bot,
   Cable,
   Check,
   Copy,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { ApiClient } from "./lib/api";
 import { cn, copyText } from "./lib/utils";
-import type { AdapterRecord, ExecutionRecord, SecretRecord, ViewKey } from "./lib/types";
+import type { AdapterRecord, ExecutionRecord, ModelProfile, SecretRecord, ViewKey } from "./lib/types";
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3000";
 const TOKEN_KEY = "oneapi.platform_token";
@@ -130,6 +131,7 @@ function App() {
 
   const [sourceType, setSourceType] = useState<"curl" | "openapi" | "raw">("curl");
   const [source, setSource] = useState(DEFAULT_CURL);
+  const [sourceUrl, setSourceUrl] = useState("");
   const [apiSlug, setApiSlug] = useState("demo_api");
   const [action, setAction] = useState("execute_demo");
   const [targetFormat, setTargetFormat] = useState("");
@@ -143,6 +145,20 @@ function App() {
   const [executions, setExecutions] = useState<ExecutionRecord[]>([]);
   const [selectedExecution, setSelectedExecution] = useState<ExecutionRecord | null>(null);
   const [activeModel, setActiveModel] = useState<{ provider: string; model: string } | null>(null);
+  const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
+  const [modelPromptDrafts, setModelPromptDrafts] = useState<Record<string, string>>({});
+  const [savingModelId, setSavingModelId] = useState("");
+  const [savingPromptModelId, setSavingPromptModelId] = useState("");
+  const [llmKeyInputs, setLlmKeyInputs] = useState<Record<"openai" | "gemini" | "deepseek", string>>({
+    openai: "",
+    gemini: "",
+    deepseek: ""
+  });
+  const [savingLlmKey, setSavingLlmKey] = useState("");
+  const [logQuery, setLogQuery] = useState("");
+  const [logStatusFilter, setLogStatusFilter] = useState("all");
+  const [logPageSize, setLogPageSize] = useState(20);
+  const [logPage, setLogPage] = useState(1);
   const [tokenMasked, setTokenMasked] = useState("");
   const [tokenCopied, setTokenCopied] = useState(false);
   const [showTokenPlain, setShowTokenPlain] = useState(false);
@@ -263,6 +279,25 @@ function App() {
     }
   }
 
+  async function refreshModels() {
+    try {
+      const [models, active] = await Promise.all([api.listModels(), api.getActiveModel()]);
+      setModelProfiles(models);
+      const drafts: Record<string, string> = {};
+      for (const item of models) {
+        drafts[item.id] = item.system_prompt ?? "";
+      }
+      setModelPromptDrafts(drafts);
+      if (!active) {
+        setActiveModel(null);
+        return;
+      }
+      setActiveModel({ provider: active.provider, model: active.model });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function refreshTokenInfo() {
     try {
       const info = await api.getPlatformTokenInfo();
@@ -279,10 +314,39 @@ function App() {
     refreshAdapters();
     refreshSecrets();
     refreshLogs();
-    refreshActiveModel();
+    refreshModels();
     refreshTokenInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, workspace, me?.id, isAdminRoute]);
+
+  useEffect(() => {
+    setLogPage(1);
+  }, [logQuery, logStatusFilter, logPageSize]);
+
+  const filteredExecutions = useMemo(() => {
+    return executions.filter((item) => {
+      const statusOk =
+        logStatusFilter === "all" ||
+        (logStatusFilter === "success" && item.upstream_status >= 200 && item.upstream_status < 300) ||
+        (logStatusFilter === "error" && (item.upstream_status < 200 || item.upstream_status >= 300));
+      if (!statusOk) {
+        return false;
+      }
+      const q = logQuery.trim().toLowerCase();
+      if (!q) {
+        return true;
+      }
+      const haystack = `${item.id} ${item.api_slug} ${item.action} ${item.upstream_status}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [executions, logQuery, logStatusFilter]);
+
+  const totalLogPages = Math.max(1, Math.ceil(filteredExecutions.length / logPageSize));
+  const currentLogPage = Math.min(logPage, totalLogPages);
+  const pagedExecutions = filteredExecutions.slice(
+    (currentLogPage - 1) * logPageSize,
+    currentLogPage * logPageSize
+  );
 
   async function refreshAdminUsers(search = adminSearch) {
     try {
@@ -362,7 +426,8 @@ function App() {
         api_slug: apiSlug,
         action,
         source_type: sourceType,
-        source_content: source,
+        source_content: source.trim() || undefined,
+        source_url: sourceUrl.trim() || undefined,
         target_format: targetFormat || undefined
       });
       setGenerated(data);
@@ -406,6 +471,102 @@ function App() {
       await refreshAdapters();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  function keyInputByProvider(provider: string) {
+    if (provider === "openai") {
+      return llmKeyInputs.openai;
+    }
+    if (provider === "google") {
+      return llmKeyInputs.gemini;
+    }
+    if (provider === "deepseek") {
+      return llmKeyInputs.deepseek;
+    }
+    return "";
+  }
+
+  function secretNameByProvider(provider: string) {
+    if (provider === "openai") {
+      return "openai_api_key";
+    }
+    if (provider === "google") {
+      return "gemini_api_key";
+    }
+    if (provider === "deepseek") {
+      return "deepseek_api_key";
+    }
+    return "";
+  }
+
+  function llmKeyStateKey(provider: string): "openai" | "gemini" | "deepseek" | "" {
+    if (provider === "openai") {
+      return "openai";
+    }
+    if (provider === "google") {
+      return "gemini";
+    }
+    if (provider === "deepseek") {
+      return "deepseek";
+    }
+    return "";
+  }
+
+  async function onActivateModel(modelProfileId: string) {
+    setError("");
+    setNotice("");
+    setSavingModelId(modelProfileId);
+    try {
+      await api.activateModel(modelProfileId);
+      setNotice("已切换激活模型");
+      await refreshModels();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingModelId("");
+    }
+  }
+
+  async function onSaveModelPrompt(modelProfileId: string) {
+    setError("");
+    setNotice("");
+    setSavingPromptModelId(modelProfileId);
+    try {
+      await api.updateModelPrompt(modelProfileId, modelPromptDrafts[modelProfileId] ?? "");
+      setNotice("System Prompt 已保存");
+      await refreshModels();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingPromptModelId("");
+    }
+  }
+
+  async function onSaveProviderKey(provider: string) {
+    const secretName = secretNameByProvider(provider);
+    const keySlot = llmKeyStateKey(provider);
+    if (!secretName || !keySlot) {
+      setError(`Unsupported provider: ${provider}`);
+      return;
+    }
+    const value = keyInputByProvider(provider).trim();
+    if (!value) {
+      setError("API Key 不能为空");
+      return;
+    }
+    setError("");
+    setNotice("");
+    setSavingLlmKey(provider);
+    try {
+      await api.saveSecret(secretName, value);
+      setLlmKeyInputs((prev) => ({ ...prev, [keySlot]: "" }));
+      setNotice(`${provider} API Key 已保存`);
+      await Promise.all([refreshSecrets(), refreshModels()]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingLlmKey("");
     }
   }
 
@@ -697,6 +858,7 @@ function App() {
           {[
             { key: "adapters", icon: Rocket, label: "Adapters" },
             { key: "secrets", icon: KeyRound, label: "Secrets" },
+            { key: "llm", icon: Bot, label: "LLM" },
             { key: "logs", icon: Logs, label: "Logs" },
             { key: "playground", icon: FlaskConical, label: "Play" }
             ,
@@ -776,7 +938,7 @@ function App() {
               <RefreshCw size={12} />
               重置
             </button>
-            <button onClick={refreshActiveModel} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+            <button onClick={refreshModels} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
               刷新模型
             </button>
             <button
@@ -861,6 +1023,12 @@ function App() {
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">Step 3 · 源信息输入</div>
+                  <input
+                    value={sourceUrl}
+                    onChange={(e) => setSourceUrl(e.target.value)}
+                    className="mb-2 w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    placeholder="可选：source_url（留空则使用下方输入内容）"
+                  />
                   <input
                     type="hidden"
                     value={sourceType}
@@ -1064,9 +1232,114 @@ function App() {
             </div>
           )}
 
+          {view === "llm" && (
+            <div className="max-w-6xl space-y-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">LLM 管理</h2>
+                  <p className="mt-1 text-xs text-slate-500">按 workspace 配置模型激活状态、System Prompt 与 API Key。</p>
+                </div>
+                <button
+                  onClick={refreshModels}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs"
+                >
+                  <RefreshCw size={12} />
+                  刷新
+                </button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                {modelProfiles.map((item) => {
+                  const keySlot = llmKeyStateKey(item.provider);
+                  return (
+                    <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="text-sm font-semibold text-slate-900">{item.provider}/{item.model}</div>
+                        <span className={cn(
+                          "rounded px-1.5 py-0.5 text-[11px]",
+                          item.api_key_configured ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                        )}>
+                          {item.api_key_configured ? "Key已配置" : "Key未配置"}
+                        </span>
+                      </div>
+                      <div className="mb-2">
+                        <button
+                          onClick={() => onActivateModel(item.id)}
+                          disabled={savingModelId === item.id || activeModel?.provider === item.provider}
+                          className="rounded-md bg-slate-900 px-2.5 py-1 text-xs text-white disabled:opacity-60"
+                        >
+                          {savingModelId === item.id ? "切换中..." : activeModel?.provider === item.provider ? "当前激活" : "设为激活"}
+                        </button>
+                      </div>
+                      <div className="mb-2">
+                        <input
+                          type="password"
+                          value={keySlot ? llmKeyInputs[keySlot] : ""}
+                          onChange={(e) => keySlot && setLlmKeyInputs((prev) => ({ ...prev, [keySlot]: e.target.value }))}
+                          className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                          placeholder={`输入 ${item.provider} API Key`}
+                        />
+                        <button
+                          onClick={() => onSaveProviderKey(item.provider)}
+                          disabled={savingLlmKey === item.provider}
+                          className="mt-2 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 disabled:opacity-60"
+                        >
+                          {savingLlmKey === item.provider ? "保存中..." : "保存 API Key"}
+                        </button>
+                      </div>
+                      <div>
+                        <textarea
+                          value={modelPromptDrafts[item.id] ?? ""}
+                          onChange={(e) => setModelPromptDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                          className="h-24 w-full rounded-md border border-slate-300 p-2 text-xs"
+                          placeholder="System Prompt（可选）"
+                        />
+                        <button
+                          onClick={() => onSaveModelPrompt(item.id)}
+                          disabled={savingPromptModelId === item.id}
+                          className="mt-2 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 disabled:opacity-60"
+                        >
+                          {savingPromptModelId === item.id ? "保存中..." : "保存 Prompt"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {view === "logs" && (
             <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-lg font-semibold">执行日志</h2>
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <h2 className="text-lg font-semibold">执行日志</h2>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={logQuery}
+                    onChange={(e) => setLogQuery(e.target.value)}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    placeholder="搜索 id/api/action"
+                  />
+                  <select
+                    value={logStatusFilter}
+                    onChange={(e) => setLogStatusFilter(e.target.value)}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                  >
+                    <option value="all">全部</option>
+                    <option value="success">成功</option>
+                    <option value="error">失败</option>
+                  </select>
+                  <select
+                    value={String(logPageSize)}
+                    onChange={(e) => setLogPageSize(Number(e.target.value))}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                  >
+                    <option value="10">10/页</option>
+                    <option value="20">20/页</option>
+                    <option value="50">50/页</option>
+                  </select>
+                </div>
+              </div>
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
@@ -1079,7 +1352,7 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {executions.map((item) => (
+                  {pagedExecutions.map((item) => (
                     <tr
                       key={item.id}
                       onClick={() => openExecution(item.id)}
@@ -1095,6 +1368,26 @@ function App() {
                   ))}
                 </tbody>
               </table>
+
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                <div>共 {filteredExecutions.length} 条，当前第 {currentLogPage}/{totalLogPages} 页</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLogPage((p) => Math.max(1, p - 1))}
+                    disabled={currentLogPage <= 1}
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 disabled:opacity-60"
+                  >
+                    上一页
+                  </button>
+                  <button
+                    onClick={() => setLogPage((p) => Math.min(totalLogPages, p + 1))}
+                    disabled={currentLogPage >= totalLogPages}
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 disabled:opacity-60"
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
 
               {selectedExecution && (
                 <div className="absolute right-0 top-0 h-full w-[45%] border-l border-slate-200 bg-white p-4 shadow-xl">

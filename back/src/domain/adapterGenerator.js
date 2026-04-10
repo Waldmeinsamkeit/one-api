@@ -175,7 +175,8 @@ export async function generateAdapterWithLlmOrFallback({
   sourceContent,
   sourceUrl,
   targetFormat,
-  modelProfile
+  modelProfile,
+  resolveApiKey
 }) {
   const resolvedContent = await resolveSourceContent({ sourceType, sourceContent, sourceUrl });
   if (modelProfile) {
@@ -193,7 +194,8 @@ export async function generateAdapterWithLlmOrFallback({
       const generated = await generateAdapterByLlm({
         profile: modelProfile,
         systemPrompt,
-        userPrompt
+        userPrompt,
+        resolveApiKey
       });
       const normalized = ensureAdapterDefaults(generated, { apiSlug, action });
       await assertTargetReachable(normalized.target?.url);

@@ -57,8 +57,11 @@ export class PlatformService {
     this.modelRegistry = modelRegistry;
   }
 
-  listModelProfiles() {
-    return this.modelRegistry.list();
+  listModelProfiles(workspaceId) {
+    return this.modelRegistry.list().map((item) => ({
+      ...item,
+      api_key_configured: this.isProviderKeyConfigured(workspaceId, item.provider)
+    }));
   }
 
   getActiveModelProfile(workspaceId) {
@@ -68,8 +71,59 @@ export class PlatformService {
     }
     return {
       ...active,
-      api_key_configured: this.modelRegistry.isApiKeyConfigured(active.provider)
+      api_key_configured: this.isProviderKeyConfigured(workspaceId, active.provider)
     };
+  }
+
+  getProviderSecretName(provider) {
+    if (provider === "openai") {
+      return "openai_api_key";
+    }
+    if (provider === "google") {
+      return "gemini_api_key";
+    }
+    if (provider === "deepseek") {
+      return "deepseek_api_key";
+    }
+    return null;
+  }
+
+  getProviderEnvKey(provider) {
+    if (provider === "openai") {
+      return config.openaiApiKey;
+    }
+    if (provider === "google") {
+      return config.geminiApiKey;
+    }
+    if (provider === "deepseek") {
+      return config.deepseekApiKey;
+    }
+    return "";
+  }
+
+  isProviderKeyConfigured(workspaceId, provider) {
+    const secretName = this.getProviderSecretName(provider);
+    if (!secretName) {
+      return false;
+    }
+    if (workspaceId) {
+      const record = this.repositories.getSecret(workspaceId, secretName);
+      if (record) {
+        return true;
+      }
+    }
+    return Boolean(this.getProviderEnvKey(provider));
+  }
+
+  resolveProviderApiKey(workspaceId, provider) {
+    const secretName = this.getProviderSecretName(provider);
+    if (secretName && workspaceId) {
+      const record = this.repositories.getSecret(workspaceId, secretName);
+      if (record) {
+        return decryptSecret(record, config.masterKey);
+      }
+    }
+    return this.getProviderEnvKey(provider);
   }
 
   activateModelProfile({ workspaceId, modelProfileId }) {
@@ -103,7 +157,8 @@ export class PlatformService {
       sourceContent,
       sourceUrl,
       targetFormat,
-      modelProfile: profile
+      modelProfile: profile,
+      resolveApiKey: (provider) => this.resolveProviderApiKey(workspaceId, provider)
     });
     validateAdapterSchema(generation.adapter);
     const logicVersion = this.repositories.nextLogicVersion(workspaceId, apiSlug, action);

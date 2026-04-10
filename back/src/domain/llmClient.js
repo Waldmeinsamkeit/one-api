@@ -1,5 +1,14 @@
 import { config } from "../config.js";
 
+export function resolveProviderApiKey({ provider, resolveApiKey, envApiKey }) {
+  const fromResolver = String(resolveApiKey?.(provider) ?? "").trim();
+  if (fromResolver) {
+    return fromResolver;
+  }
+  const fromEnv = String(envApiKey ?? "").trim();
+  return fromEnv;
+}
+
 function extractJson(text) {
   if (!text || typeof text !== "string") {
     throw new Error("LLM returned empty text");
@@ -20,14 +29,14 @@ function extractJson(text) {
   throw new Error("Unable to parse JSON from model output");
 }
 
-async function callOpenAI({ model, systemPrompt, userPrompt }) {
-  if (!config.openaiApiKey) {
+async function callOpenAI({ model, systemPrompt, userPrompt, apiKey }) {
+  if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
   const response = await fetch(`${config.openaiBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.openaiApiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -49,14 +58,14 @@ async function callOpenAI({ model, systemPrompt, userPrompt }) {
   return extractJson(text);
 }
 
-async function callDeepSeek({ model, systemPrompt, userPrompt }) {
-  if (!config.deepseekApiKey) {
+async function callDeepSeek({ model, systemPrompt, userPrompt, apiKey }) {
+  if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY is not configured");
   }
   const response = await fetch(`${config.deepseekBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.deepseekApiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -78,11 +87,11 @@ async function callDeepSeek({ model, systemPrompt, userPrompt }) {
   return extractJson(text);
 }
 
-async function callGemini({ model, systemPrompt, userPrompt }) {
-  if (!config.geminiApiKey) {
+async function callGemini({ model, systemPrompt, userPrompt, apiKey }) {
+  if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not configured");
   }
-  const url = `${config.geminiBaseUrl}/models/${model}:generateContent?key=${config.geminiApiKey}`;
+  const url = `${config.geminiBaseUrl}/models/${model}:generateContent?key=${apiKey}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -113,18 +122,45 @@ async function callGemini({ model, systemPrompt, userPrompt }) {
   return extractJson(text);
 }
 
-export async function generateAdapterByLlm({ profile, systemPrompt, userPrompt }) {
+export async function generateAdapterByLlm({ profile, systemPrompt, userPrompt, resolveApiKey }) {
   if (!profile) {
     throw new Error("No model profile available");
   }
   if (profile.provider === "openai") {
-    return callOpenAI({ model: profile.model, systemPrompt, userPrompt });
+    return callOpenAI({
+      model: profile.model,
+      systemPrompt,
+      userPrompt,
+      apiKey: resolveProviderApiKey({
+        provider: profile.provider,
+        resolveApiKey,
+        envApiKey: config.openaiApiKey
+      })
+    });
   }
   if (profile.provider === "google") {
-    return callGemini({ model: profile.model, systemPrompt, userPrompt });
+    return callGemini({
+      model: profile.model,
+      systemPrompt,
+      userPrompt,
+      apiKey: resolveProviderApiKey({
+        provider: profile.provider,
+        resolveApiKey,
+        envApiKey: config.geminiApiKey
+      })
+    });
   }
   if (profile.provider === "deepseek") {
-    return callDeepSeek({ model: profile.model, systemPrompt, userPrompt });
+    return callDeepSeek({
+      model: profile.model,
+      systemPrompt,
+      userPrompt,
+      apiKey: resolveProviderApiKey({
+        provider: profile.provider,
+        resolveApiKey,
+        envApiKey: config.deepseekApiKey
+      })
+    });
   }
   throw new Error(`Unsupported model provider: ${profile.provider}`);
 }

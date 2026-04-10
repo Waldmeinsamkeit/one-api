@@ -405,7 +405,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/v1/models" && method === "GET") {
-      sendJson(req, res, 200, { success: true, data: service.listModelProfiles() });
+      sendJson(req, res, 200, { success: true, data: service.listModelProfiles(workspaceId) });
       return;
     }
 
@@ -449,9 +449,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/v1/models/prompt" && method === "POST") {
-      if (!requireAdmin(req, res)) {
-        return;
-      }
       const body = await readJson(req);
       const updated = service.updateModelPrompt({
         modelProfileId: body.model_profile_id,

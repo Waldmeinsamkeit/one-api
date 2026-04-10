@@ -25,6 +25,7 @@ node scripts/verify.js
 - `GET /v1/executions/:id`
 - `GET /v1/models`
 - `POST /v1/models/activate`
+- `POST /v1/models/prompt`
 
 ## Local SQL for Secrets
 
@@ -40,6 +41,18 @@ SQLITE_PATH=data/one-api.db
 
 Sensitive secret payload fields (`iv/ciphertext/tag`) are stored in SQLite, not in-memory only.
 Adapter drafts/active versions and execution logs are also restored after restart.
+
+## Workspace LLM Keys (via Secrets)
+
+Model provider API keys can be configured per workspace using existing Secrets:
+
+- `openai_api_key`
+- `gemini_api_key`
+- `deepseek_api_key`
+
+Resolution priority during adapter generation:
+1. workspace secret key
+2. env key fallback (`OPENAI_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY`)
 
 ## OAuth Login (Linux.do)
 

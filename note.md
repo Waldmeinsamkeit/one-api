@@ -110,10 +110,10 @@
   - 服务启动接入 `ENABLE_SQLITE_STATE`（默认开启），与 `SQLITE_PATH` 共用数据库文件。
 
 ### P1（下一迭代）
-- [ ] 前端补全 `source_url` 输入与传参，打通后端抓取链路。
-- [ ] 模型管理 UI 完整化（models 列表、激活切换、prompt 编辑）。
-- [ ] 日志能力增强（分页、筛选、按条件查询）。
-- [ ] SSRF/重定向测试补强（重点覆盖“公网首跳后 302 到内网”阻断）。
+- [x] 前端补全 `source_url` 输入与传参，打通后端抓取链路。
+- [x] 模型管理 UI 完整化（models 列表、激活切换、prompt 编辑）。
+- [x] 日志能力增强（分页、筛选、按条件查询）。
+- [x] SSRF/重定向测试补强（重点覆盖“公网首跳后 302 到内网”阻断）。
 
 ### P2（后续优化）
 - [ ] 错误码分层与接口返回结构标准化（401/403/422/5xx 等）。
@@ -159,3 +159,18 @@
   - `README.md` 已补内网穿透 + OAuth 测试说明。
 - [ ] M4（第二阶段）：真实联调验证（待填正式 OAuth/Admin 环境变量后执行）。
 - 补充：管理操作审计日志（谁在何时删除了哪个用户）与失败重试/限流策略。
+
+## 9. 本次更新小结（2026-04-10，P1 迭代）
+- 前端新增 `LLM` 栏目（左侧导航）：
+  - 展示 models 列表、当前激活状态、切换激活模型。
+  - 支持编辑并保存 `system_prompt`。
+  - 支持配置 provider API Key（复用 Secrets）：
+    - `openai_api_key`
+    - `gemini_api_key`
+    - `deepseek_api_key`
+- 后端模型可用性改为 workspace 维度：
+  - `/v1/models` 与 `/v1/models/active` 的 `api_key_configured` 基于当前 workspace 的 Secrets 计算（并保留 `.env` fallback）。
+  - LLM 生成时 API Key 解析优先 workspace secret，未配置时回退 `.env`。
+- 前端 Adapters 页补全 `source_url` 输入并传参到 `/v1/adapters/generate`。
+- Logs 页新增第一版查询能力：关键字筛选、状态筛选、分页大小与翻页控制。
+- 新增 SSRF 重定向阻断测试：覆盖“公网首跳 -> 302 到 `127.0.0.1`”被拦截场景。

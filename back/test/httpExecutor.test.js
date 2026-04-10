@@ -53,3 +53,39 @@ test("network access denied reports EACCES clearly", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("blocks redirect from public IP to private IP", async () => {
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = async () => {
+    fetchCalls += 1;
+    return {
+      status: 302,
+      headers: new Headers({ location: "http://127.0.0.1/internal" })
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () =>
+        executeHttpRequest({
+          method: "GET",
+          url: "http://8.8.8.8/public",
+          headers: {},
+          body: null,
+          timeoutMs: 1000,
+          maxRedirects: 2,
+          retryAttempts: 0,
+          allowPrivateIp: false
+        }),
+      (error) => {
+        assert.match(error.message, /SSRF blocked: disallowed IP 127\.0\.0\.1/);
+        assert.match(error.message, /GET http:\/\/127\.0\.0\.1\/internal/);
+        return true;
+      }
+    );
+    assert.equal(fetchCalls, 1);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

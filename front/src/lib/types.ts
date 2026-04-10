@@ -1,4 +1,4 @@
-export type ViewKey = "adapters" | "secrets" | "logs" | "playground" | "guide";
+export type ViewKey = "adapters" | "secrets" | "llm" | "logs" | "playground" | "guide";
 
 export type ApiEnvelope<T> = {
   success: boolean;
@@ -51,6 +51,8 @@ export type ModelProfile = {
   provider: string;
   model: string;
   status: string;
+  system_prompt?: string;
+  schema_id?: string;
   api_key_configured: boolean;
 };
 

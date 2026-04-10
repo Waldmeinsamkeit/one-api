@@ -113,6 +113,13 @@ export class ApiClient {
     });
   }
 
+  updateModelPrompt(modelProfileId: string, systemPrompt: string) {
+    return this.request<ModelProfile>("/v1/models/prompt", {
+      method: "POST",
+      body: JSON.stringify({ model_profile_id: modelProfileId, system_prompt: systemPrompt })
+    });
+  }
+
   getPlatformTokenInfo() {
     return this.request<PlatformTokenInfo>("/v1/platform-token");
   }
