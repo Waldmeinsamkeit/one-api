@@ -14,6 +14,9 @@ back/data/
 front/node_modules/
 front/dist/
 front/*.tsbuildinfo
+cli/node_modules/
+cli/dist/
+cli/*.tsbuildinfo
 
 # OS/editor noise
 .DS_Store
