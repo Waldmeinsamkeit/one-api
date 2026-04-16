@@ -175,7 +175,13 @@ export class PlatformService {
       ...created,
       generation_mode: generation.generation_mode,
       generation_warning: generation.generation_warning ?? null,
-      source_excerpt: generation.source_excerpt
+      source_excerpt: generation.source_excerpt,
+      generation_meta: generation.generation_meta ?? {
+        detected_as: sourceType,
+        effective_source_type: sourceType,
+        confidence: "high",
+        warnings: []
+      }
     };
   }
 

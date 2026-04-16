@@ -4,6 +4,77 @@ import { assertSafeUrl } from "../lib/ssrf.js";
 import { config } from "../config.js";
 import { buildSkillPromptInstructions } from "./skillLibrary.js";
 
+const AUTO_RAW_FALLBACK_WARNING =
+  "No standard curl or OpenAPI format detected. System treated input as 'raw' text using heuristic reasoning.";
+
+function isLikelyCurl(input) {
+  if (!input || typeof input !== "string") {
+    return false;
+  }
+  return /\bcurl(?:\.exe)?\b/i.test(input) && /https?:\/\/[^\s'"]+/i.test(input);
+}
+
+function isLikelyOpenApiText(input) {
+  if (!input || typeof input !== "string") {
+    return false;
+  }
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Boolean(
+      parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        (parsed.openapi || parsed.swagger || parsed.paths)
+    );
+  } catch {
+    return /(^|\n)\s*openapi\s*:/i.test(trimmed) || /(^|\n)\s*paths\s*:/i.test(trimmed);
+  }
+}
+
+export function detectSourceType(input) {
+  if (isLikelyCurl(input)) {
+    return {
+      detectedAs: "curl",
+      effectiveType: "curl",
+      confidence: "high",
+      warnings: []
+    };
+  }
+  if (isLikelyOpenApiText(input)) {
+    return {
+      detectedAs: "openapi",
+      effectiveType: "openapi",
+      confidence: "high",
+      warnings: []
+    };
+  }
+  return {
+    detectedAs: "raw",
+    effectiveType: "raw",
+    confidence: "low",
+    warnings: [AUTO_RAW_FALLBACK_WARNING]
+  };
+}
+
+function normalizeSourceMode({ sourceType, sourceContent }) {
+  if (sourceType === "auto") {
+    return detectSourceType(sourceContent);
+  }
+  if (!["curl", "openapi", "raw"].includes(sourceType)) {
+    throw new Error("source_type must be auto, openapi, curl, or raw");
+  }
+  return {
+    detectedAs: sourceType,
+    effectiveType: sourceType,
+    confidence: "high",
+    warnings: []
+  };
+}
+
 function parseCurl(input) {
   const method = (input.match(/-X\s+([A-Z]+)/i)?.[1] ?? "GET").toUpperCase();
   const url = input.match(/https?:\/\/[^\s'"]+/)?.[0] ?? "https://example.com";
@@ -27,47 +98,98 @@ function parseOpenApi(input) {
 }
 
 export function generateAdapterFromSource({ apiSlug, action, sourceType, sourceContent, sourceUrl }) {
+  const mode = normalizeSourceMode({ sourceType, sourceContent });
   let parsed;
-  if (sourceType === "curl") {
+  if (mode.effectiveType === "curl") {
     parsed = parseCurl(sourceContent);
-  } else if (sourceType === "openapi") {
+  } else if (mode.effectiveType === "openapi") {
     parsed = parseOpenApi(sourceContent);
-  } else if (sourceType === "raw") {
-    parsed = sourceUrl
-      ? { method: "GET", url: sourceUrl }
-      : parseCurl(sourceContent);
-  } else {
-    throw new Error("source_type must be openapi, curl, or raw");
+  } else if (mode.effectiveType === "raw") {
+    parsed = sourceUrl ? { method: "GET", url: sourceUrl } : parseCurl(sourceContent);
   }
 
+  if (!parsed && sourceType === "auto") {
+    parsed = sourceUrl ? { method: "GET", url: sourceUrl } : parseCurl(sourceContent);
+  }
   if (!parsed) {
     throw new Error("Unable to parse API source");
   }
 
   return {
-    api_slug: apiSlug,
-    action,
-    adapter_schema_version: "1.0",
-    logic_version: 1,
-    auth_mode: "none",
-    target: {
-      url: parsed.url,
-      method: parsed.method,
-      headers: {
-        Accept: "application/json"
+    adapter: {
+      api_slug: apiSlug,
+      action,
+      adapter_schema_version: "1.0",
+      logic_version: 1,
+      auth_mode: "none",
+      target: {
+        url: parsed.url,
+        method: parsed.method,
+        headers: {
+          Accept: "application/json"
+        },
+        query_params: {},
+        body: null
       },
-      query_params: {},
-      body: null
-    },
-    response_mapping: {
-      data: "$"
-    },
-    schema_hint: {},
-    policy: {
-      timeout_ms: 8000,
-      retry: {
-        max_attempts: 1
+      response_mapping: {
+        data: "$"
+      },
+      schema_hint: {},
+      policy: {
+        timeout_ms: 8000,
+        retry: {
+          max_attempts: 1
+        }
       }
+    },
+    meta: {
+      detected_as: mode.detectedAs,
+      effective_source_type: mode.effectiveType,
+      confidence: mode.confidence,
+      warnings: [...mode.warnings]
+    }
+  };
+}
+
+function buildGenerationMeta({ sourceType, sourceContent }) {
+  const mode = normalizeSourceMode({ sourceType, sourceContent });
+  return {
+    source_type: sourceType,
+    detected_as: mode.detectedAs,
+    effective_source_type: mode.effectiveType,
+    confidence: mode.confidence,
+    warnings: [...mode.warnings]
+  };
+}
+
+function buildWarningPromptSuffix(generationMeta) {
+  if (!generationMeta.warnings.length) {
+    return "";
+  }
+  return "注意：该输入未通过严格的格式校验，可能包含混乱的文本片段、不完整的代码或口头描述。请尽你所能提取其中蕴含的 API 逻辑，忽略无关信息。";
+}
+
+function buildFallbackFromGeneratedSource({
+  apiSlug,
+  action,
+  sourceType,
+  sourceContent,
+  sourceUrl,
+  generationMeta
+}) {
+  const fallback = generateAdapterFromSource({
+    apiSlug,
+    action,
+    sourceType,
+    sourceContent,
+    sourceUrl
+  });
+  return {
+    ...fallback,
+    meta: {
+      ...fallback.meta,
+      ...generationMeta,
+      warnings: [...new Set([...(generationMeta.warnings || []), ...(fallback.meta.warnings || [])])]
     }
   };
 }
@@ -81,7 +203,7 @@ function stripHtml(html) {
     .trim();
 }
 
-async function resolveSourceContent({ sourceType, sourceContent, sourceUrl }) {
+async function resolveSourceContent({ sourceContent, sourceUrl }) {
   if (sourceContent && sourceContent.trim()) {
     return sourceContent.trim();
   }
@@ -138,12 +260,12 @@ async function assertTargetReachable(targetUrl) {
     return;
   }
   if (!targetUrl || typeof targetUrl !== "string") {
-    throw new Error("target.url 缺失，无法校验可达性");
+    throw new Error("target.url is required for reachability check");
   }
   try {
     await assertSafeUrl(targetUrl, { allowPrivateIp: false });
-  } catch (error) {
-    throw new Error(`target.url 不可达或无法访问: ${targetUrl}`);
+  } catch {
+    throw new Error(`target.url unreachable or blocked: ${targetUrl}`);
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), config.targetReachabilityTimeoutMs);
@@ -157,7 +279,7 @@ async function assertTargetReachable(targetUrl) {
       return;
     }
     return;
-  } catch (error) {
+  } catch {
     const controller2 = new AbortController();
     const timer2 = setTimeout(() => controller2.abort("timeout"), config.targetReachabilityTimeoutMs);
     try {
@@ -168,7 +290,7 @@ async function assertTargetReachable(targetUrl) {
       });
       return;
     } catch {
-      throw new Error(`target.url 不可达或无法访问: ${targetUrl}`);
+      throw new Error(`target.url unreachable or blocked: ${targetUrl}`);
     } finally {
       clearTimeout(timer2);
     }
@@ -187,7 +309,10 @@ export async function generateAdapterWithLlmOrFallback({
   modelProfile,
   resolveApiKey
 }) {
-  const resolvedContent = await resolveSourceContent({ sourceType, sourceContent, sourceUrl });
+  const resolvedContent = await resolveSourceContent({ sourceContent, sourceUrl });
+  const generationMeta = buildGenerationMeta({ sourceType, sourceContent: resolvedContent });
+  const promptWarningSuffix = buildWarningPromptSuffix(generationMeta);
+
   if (modelProfile) {
     const systemPrompt =
       modelProfile.system_prompt?.trim() ||
@@ -195,9 +320,10 @@ export async function generateAdapterWithLlmOrFallback({
     const userPrompt = buildUserPrompt({
       apiSlug,
       action,
-      sourceType,
+      sourceType: generationMeta.effective_source_type,
       sourceContent: resolvedContent,
-      targetFormat
+      targetFormat,
+      warningPromptSuffix: promptWarningSuffix
     });
     try {
       const generated = await generateAdapterByLlm({
@@ -211,37 +337,42 @@ export async function generateAdapterWithLlmOrFallback({
       return {
         adapter: normalized,
         generation_mode: "llm",
-        source_excerpt: resolvedContent.slice(0, 500)
+        source_excerpt: resolvedContent.slice(0, 500),
+        generation_meta: generationMeta
       };
     } catch (error) {
-      const fallback = generateAdapterFromSource({
+      const fallback = buildFallbackFromGeneratedSource({
         apiSlug,
         action,
-        sourceType,
+        sourceType: generationMeta.effective_source_type,
         sourceContent: resolvedContent,
-        sourceUrl
+        sourceUrl,
+        generationMeta
       });
-      await assertTargetReachable(fallback.target?.url);
+      await assertTargetReachable(fallback.adapter.target?.url);
       return {
-        adapter: fallback,
+        adapter: fallback.adapter,
         generation_mode: "fallback",
         generation_warning: String(error.message || error),
-        source_excerpt: resolvedContent.slice(0, 500)
+        source_excerpt: resolvedContent.slice(0, 500),
+        generation_meta: fallback.meta
       };
     }
   }
 
-  const fallback = generateAdapterFromSource({
+  const fallback = buildFallbackFromGeneratedSource({
     apiSlug,
     action,
-    sourceType,
+    sourceType: generationMeta.effective_source_type,
     sourceContent: resolvedContent,
-    sourceUrl
+    sourceUrl,
+    generationMeta
   });
-  await assertTargetReachable(fallback.target?.url);
+  await assertTargetReachable(fallback.adapter.target?.url);
   return {
-    adapter: fallback,
+    adapter: fallback.adapter,
     generation_mode: "fallback",
-    source_excerpt: resolvedContent.slice(0, 500)
+    source_excerpt: resolvedContent.slice(0, 500),
+    generation_meta: fallback.meta
   };
 }

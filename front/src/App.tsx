@@ -20,11 +20,20 @@ import {
 } from "lucide-react";
 import { ApiClient } from "./lib/api";
 import { cn, copyText } from "./lib/utils";
-import type { AdapterRecord, ExecutionRecord, ModelProfile, SecretRecord, ViewKey } from "./lib/types";
+import type {
+  AdapterGenerateMeta,
+  AdapterRecord,
+  ExecutionRecord,
+  ModelProfile,
+  SecretRecord,
+  SourceType,
+  ViewKey
+} from "./lib/types";
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3000";
 const TOKEN_KEY = "oneapi.platform_token";
 const FIXED_WORKSPACE = import.meta.env.VITE_WORKSPACE_ID ?? "default";
+const ENABLE_LOGIN_PAGE = import.meta.env.VITE_ENABLE_LOGIN_PAGE === "true";
 
 const DEFAULT_CURL = `curl https://jsonplaceholder.typicode.com/posts -d '{"title":"foo","body":"bar","userId":1}' -H "Content-type: application/json"`;
 
@@ -98,6 +107,48 @@ function authValidationHint(adapter: AdapterRecord | null): string | null {
   return null;
 }
 
+type ManualSourceType = Exclude<SourceType, "auto">;
+
+function detectInputSourceType(input: string): ManualSourceType {
+  const text = input.trim();
+  if (/\bcurl(?:\.exe)?\b/i.test(text) && /https?:\/\/[^\s'"]+/i.test(text)) {
+    return "curl";
+  }
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object" && ("openapi" in parsed || "swagger" in parsed || "paths" in parsed)) {
+        return "openapi";
+      }
+    } catch {
+      if (/(^|\n)\s*openapi\s*:/i.test(text) || /(^|\n)\s*paths\s*:/i.test(text)) {
+        return "openapi";
+      }
+    }
+  }
+  return "raw";
+}
+
+function sourceTypeLabel(sourceType: ManualSourceType) {
+  if (sourceType === "curl") {
+    return "Curl";
+  }
+  if (sourceType === "openapi") {
+    return "OpenAPI";
+  }
+  return "Raw";
+}
+
+function nextManualSourceType(current: ManualSourceType): ManualSourceType {
+  if (current === "curl") {
+    return "openapi";
+  }
+  if (current === "openapi") {
+    return "raw";
+  }
+  return "curl";
+}
+
 function buildExecuteRequestExport(adapter: AdapterRecord, token: string, workspace: string) {
   const payloadKeys = parsePayloadKeys(adapter);
   const payload: Record<string, string> = {};
@@ -168,8 +219,10 @@ function App() {
 
   const api = useMemo(() => new ApiClient(API_BASE, token, workspace), [token, workspace]);
 
-  const [sourceType, setSourceType] = useState<"curl" | "openapi" | "raw">("curl");
+  const [sourceType, setSourceType] = useState<SourceType>("auto");
   const [source, setSource] = useState(DEFAULT_CURL);
+  const detectedSourceType = useMemo(() => detectInputSourceType(source), [source]);
+  const effectiveSourceType: ManualSourceType = sourceType === "auto" ? detectedSourceType : sourceType;
   const [sourceUrl, setSourceUrl] = useState("");
   const [apiSlug, setApiSlug] = useState("demo_api");
   const [action, setAction] = useState("execute_demo");
@@ -178,6 +231,7 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [generated, setGenerated] = useState<AdapterRecord | null>(null);
+  const [generateMeta, setGenerateMeta] = useState<AdapterGenerateMeta | null>(null);
 
   const [adapters, setAdapters] = useState<AdapterRecord[]>([]);
   const [secrets, setSecrets] = useState<SecretRecord[]>([]);
@@ -455,21 +509,27 @@ function App() {
     }
   }
 
-  async function onGenerate() {
+  async function onGenerate(overrideType?: SourceType) {
+    const nextType = overrideType ?? sourceType;
     setError("");
     setNotice("");
     setGenerating(true);
     setGenerated(null);
+    setGenerateMeta(null);
     try {
-      const data = await api.generateAdapter({
+      const result = await api.generateAdapter({
         api_slug: apiSlug,
         action,
-        source_type: sourceType,
+        source_type: nextType,
         source_content: source.trim() || undefined,
         source_url: sourceUrl.trim() || undefined,
         target_format: targetFormat || undefined
       });
-      setGenerated(data);
+      setGenerated(result.data);
+      setGenerateMeta(result.meta ?? null);
+      if (overrideType) {
+        setSourceType(overrideType);
+      }
       setNotice("Adapter 生成成功。");
       await refreshAdapters();
     } catch (e) {
@@ -477,6 +537,16 @@ function App() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  function onForceCycleSourceType() {
+    const current = sourceType === "auto" ? detectedSourceType : sourceType;
+    const next = nextManualSourceType(current);
+    setSourceType(next);
+  }
+
+  async function onRetryWithSpecificMode(nextType: ManualSourceType) {
+    await onGenerate(nextType);
   }
 
   async function onPasswordLogin() {
@@ -848,6 +918,17 @@ function App() {
         </div>
       )
     ) : !me ? (
+      !ENABLE_LOGIN_PAGE ? (
+        <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h1 className="text-xl font-semibold text-slate-900">登录页面已关闭</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              当前环境未开启普通前端登录。请在 <code className="rounded bg-slate-100 px-1">front/.env</code> 设置
+              <code className="ml-1 rounded bg-slate-100 px-1">VITE_ENABLE_LOGIN_PAGE=true</code> 后重启前端。
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">one-api 登录</h1>
@@ -887,6 +968,7 @@ function App() {
           </div>
         </div>
       </div>
+      )
     ) : (
     <div className="flex min-h-screen text-foreground">
       <aside className="w-20 border-r border-slate-200 bg-white/80 backdrop-blur">
@@ -1013,7 +1095,7 @@ function App() {
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Adapter 生成器</h2>
                   <div className="flex gap-1">
-                    {(["curl", "openapi", "raw"] as const).map((s) => (
+                    {(["auto", "curl", "openapi", "raw"] as const).map((s) => (
                       <button
                         key={s}
                         onClick={() => setSourceType(s)}
@@ -1026,6 +1108,15 @@ function App() {
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                  <span>已识别为：{sourceTypeLabel(detectedSourceType)} 模式。</span>
+                  <button
+                    onClick={onForceCycleSourceType}
+                    className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-50"
+                  >
+                    不是 {sourceTypeLabel(detectedSourceType)}？点此切换
+                  </button>
                 </div>
                 <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">Step 1 · 基础参数</div>
@@ -1075,15 +1166,15 @@ function App() {
                   />
                   <Editor
                     height="340px"
-                    defaultLanguage={sourceType === "openapi" ? "json" : "shell"}
-                    language={sourceType === "openapi" ? "json" : "shell"}
+                    defaultLanguage={effectiveSourceType === "openapi" ? "json" : "shell"}
+                    language={effectiveSourceType === "openapi" ? "json" : "shell"}
                     value={source}
                     onChange={(v) => setSource(v || "")}
                     options={{ minimap: { enabled: false }, fontSize: 13 }}
                   />
                 </div>
                 <button
-                  onClick={onGenerate}
+                  onClick={() => onGenerate()}
                   disabled={generating}
                   className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
@@ -1094,7 +1185,7 @@ function App() {
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="mb-3 text-lg font-semibold">AI Preview</h2>
-                {generating && sourceType === "openapi" && (
+                {generating && effectiveSourceType === "openapi" && (
                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
                     AI 正在逆向工程 API 结构...
                   </div>
@@ -1104,10 +1195,30 @@ function App() {
                     <div className="mb-3 rounded-md bg-slate-50 p-2 text-xs">
                       <div>Method/URL: {String((generated.spec as any)?.target?.method)} {String((generated.spec as any)?.target?.url)}</div>
                       <div>生成模式: {generated.generation_mode}</div>
+                      <div>识别类型: {sourceTypeLabel((generateMeta?.detected_as as ManualSourceType) || effectiveSourceType)}</div>
+                      <div>识别置信度: {generateMeta?.confidence ?? "high"}</div>
                       <div>鉴权模式: {detectAuthMode(generated) === "secret" ? "需鉴权" : "无鉴权"}</div>
                       {generated.generation_warning && <div className="text-amber-600">警告: {generated.generation_warning}</div>}
                       {authValidationHint(generated) && <div className="text-amber-600">校验: {authValidationHint(generated)}</div>}
                     </div>
+                    {Boolean(generateMeta?.warnings?.length) && (
+                      <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <div>未能自动识别输入格式，已使用智能提取模式。请检查生成的字段是否准确。</div>
+                        <div className="mt-1">{generateMeta?.warnings?.[0]}</div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span>切换到特定模式重试:</span>
+                          {(["curl", "openapi", "raw"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => onRetryWithSpecificMode(mode)}
+                              className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] text-amber-700"
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <Editor
                       height="240px"
                       defaultLanguage="json"

@@ -61,7 +61,14 @@ export function buildSystemPrompt({ skillInstructions = "" } = {}) {
   return base.join("\n");
 }
 
-export function buildUserPrompt({ apiSlug, action, sourceType, sourceContent, targetFormat }) {
+export function buildUserPrompt({
+  apiSlug,
+  action,
+  sourceType,
+  sourceContent,
+  targetFormat,
+  warningPromptSuffix = ""
+}) {
   const requestedTarget =
     targetFormat ||
     JSON.stringify(
@@ -93,6 +100,7 @@ export function buildUserPrompt({ apiSlug, action, sourceType, sourceContent, ta
     "Generate the best adapter JSON for this API and contract.",
     "Use adapter_schema_version=1.0 and logic_version=1.",
     "If source has multiple endpoints, choose the endpoint that best matches action.",
-    "Also generate schema_hint for mapped output fields. Keep it lightweight: type/format/desc/enum/unit."
+    "Also generate schema_hint for mapped output fields. Keep it lightweight: type/format/desc/enum/unit.",
+    warningPromptSuffix
   ].join("\n");
 }

@@ -1,5 +1,6 @@
 import type {
   AdapterRecord,
+  AdapterGenerateResponse,
   ApiEnvelope,
   ExecuteResult,
   ExecutionRecord,
@@ -52,10 +53,10 @@ export class ApiClient {
   }
 
   generateAdapter(payload: Record<string, unknown>) {
-    return this.request<AdapterRecord>("/v1/adapters/generate", {
+    return this.request<AdapterGenerateResponse>("/v1/adapters/generate", {
       method: "POST",
       body: JSON.stringify(payload)
-    });
+    }, false);
   }
 
   publishAdapter(adapterId: string) {

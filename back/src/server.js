@@ -509,7 +509,16 @@ const server = http.createServer(async (req, res) => {
         sourceUrl: body.source_url,
         targetFormat: body.target_format
       });
-      sendJson(req, res, 201, { success: true, data: created });
+      const generationMeta = created.generation_meta ?? {};
+      sendJson(req, res, 201, {
+        success: true,
+        data: created,
+        meta: {
+          detected_as: generationMeta.detected_as ?? body.source_type ?? "raw",
+          confidence: generationMeta.confidence ?? "high",
+          warnings: Array.isArray(generationMeta.warnings) ? generationMeta.warnings : []
+        }
+      });
       return;
     }
 

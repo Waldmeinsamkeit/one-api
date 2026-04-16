@@ -1,4 +1,5 @@
 export type ViewKey = "adapters" | "secrets" | "llm" | "logs" | "playground" | "guide";
+export type SourceType = "auto" | "curl" | "openapi" | "raw";
 
 export type ApiEnvelope<T> = {
   success: boolean;
@@ -17,6 +18,18 @@ export type AdapterRecord = {
   generation_warning?: string | null;
   spec: Record<string, unknown>;
   updated_at: string;
+};
+
+export type AdapterGenerateMeta = {
+  detected_as?: "curl" | "openapi" | "raw";
+  confidence?: "high" | "medium" | "low";
+  warnings?: string[];
+};
+
+export type AdapterGenerateResponse = {
+  success: boolean;
+  data: AdapterRecord;
+  meta?: AdapterGenerateMeta;
 };
 
 export type SecretRecord = {
