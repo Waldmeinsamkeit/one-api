@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "test": "node --test",
     "verify": "node scripts/verify.js",
-    "llm:demo": "node scripts/llm-generate-demo.js"
+    "llm:demo": "node scripts/llm-generate-demo.js",
+    "openapi:export": "node scripts/export-openapi.js"
   }
 }

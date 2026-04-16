@@ -8,6 +8,8 @@ import { SqliteStateStore } from "./domain/sqliteStateStore.js";
 import { SqliteAuthStore } from "./domain/sqliteAuthStore.js";
 import { AuthService } from "./domain/authService.js";
 import { isLocalhostIp } from "./lib/ip.js";
+import { errorEnvelope, ApiError, toApiError } from "./lib/apiError.js";
+import { buildOpenApiSpec } from "./openapi.js";
 import crypto from "node:crypto";
 
 const stateStore = config.enableSqliteState ? new SqliteStateStore({ dbPath: config.sqlitePath }) : null;
@@ -61,6 +63,11 @@ function sendJson(req, res, status, body) {
     ...buildCorsHeaders(req)
   });
   res.end(JSON.stringify(body));
+}
+
+function responseError(req, res, { status, code, message, details = null }) {
+  const requestId = req?.requestId || req?.request_id || "";
+  sendJson(req, res, status, errorEnvelope({ code, message, details }, requestId));
 }
 
 function shouldUseSecureCookies() {
@@ -156,9 +163,10 @@ function getClientIp(req) {
 function requireLocalhost(req, res) {
   const ip = getClientIp(req);
   if (!isLocalhostIp(ip)) {
-    sendJson(req, res, 403, {
-      success: false,
-      error: { code: "FORBIDDEN", message: "Admin login only allowed from localhost" }
+    responseError(req, res, {
+      status: 403,
+      code: "FORBIDDEN",
+      message: "Admin login only allowed from localhost"
     });
     return false;
   }
@@ -169,7 +177,11 @@ function requireAdminSession(req, res) {
   const cookies = parseCookies(req);
   const session = authService.getAdminSession(cookies[config.adminSessionCookieName]);
   if (!session) {
-    sendJson(req, res, 401, { success: false, error: { code: "UNAUTHORIZED", message: "Admin not logged in" } });
+    responseError(req, res, {
+      status: 401,
+      code: "UNAUTHORIZED",
+      message: "Admin not logged in"
+    });
     return null;
   }
   return session;
@@ -183,7 +195,15 @@ async function readJson(req) {
   if (chunks.length === 0) {
     return {};
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new ApiError({
+      status: 422,
+      code: "INVALID_JSON",
+      message: "Invalid JSON body"
+    });
+  }
 }
 
 function requireAuth(req, res) {
@@ -199,7 +219,11 @@ function requireAuth(req, res) {
 
   const auth = req.headers.authorization ?? "";
   if (auth !== `Bearer ${currentPlatformToken}`) {
-    sendJson(req, res, 401, { success: false, error: { code: "UNAUTHORIZED", message: "Invalid token" } });
+    responseError(req, res, {
+      status: 401,
+      code: "UNAUTHORIZED",
+      message: "Invalid token"
+    });
     return null;
   }
   return req.headers["x-workspace-id"] || config.defaultWorkspaceId;
@@ -208,23 +232,25 @@ function requireAuth(req, res) {
 function requireAdmin(req, res) {
   const role = req.headers["x-role"];
   if (role !== "admin") {
-    sendJson(req, res, 403, { success: false, error: { code: "FORBIDDEN", message: "Admin role required" } });
+    responseError(req, res, {
+      status: 403,
+      code: "FORBIDDEN",
+      message: "Admin role required"
+    });
     return false;
   }
   return true;
 }
 
-function safeError(res, error) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "Unknown error";
-  sendJson(null, res, 400, { success: false, error: { code: "BAD_REQUEST", message } });
+function sendError(req, res, error, requestId) {
+  const apiError = toApiError(error);
+  sendJson(req, res, apiError.status, errorEnvelope(apiError, requestId));
 }
 
 const server = http.createServer(async (req, res) => {
+  const requestId = req.headers["x-request-id"] || crypto.randomUUID();
+  req.requestId = requestId;
+  res.setHeader("x-request-id", String(requestId));
   try {
     const method = req.method ?? "GET";
     const parsedUrl = new URL(req.url ?? "/", "http://localhost");
@@ -250,6 +276,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/v1/openapi.json" && method === "GET") {
+      sendJson(req, res, 200, {
+        success: true,
+        data: buildOpenApiSpec()
+      });
+      return;
+    }
+
     if (path === "/auth/login" && method === "GET") {
       const loginUrl = authService.getLoginUrl();
       redirect(res, loginUrl);
@@ -272,7 +306,11 @@ const server = http.createServer(async (req, res) => {
       const cookies = parseCookies(req);
       const session = authService.getSessionContext(cookies[config.sessionCookieName]);
       if (!session) {
-        sendJson(req, res, 401, { success: false, error: { code: "UNAUTHORIZED", message: "Not logged in" } });
+        responseError(req, res, {
+          status: 401,
+          code: "UNAUTHORIZED",
+          message: "Not logged in"
+        });
         return;
       }
       sendJson(req, res, 200, { success: true, data: session.user });
@@ -294,9 +332,10 @@ const server = http.createServer(async (req, res) => {
         password: body.password
       });
       if (!ok) {
-        sendJson(req, res, 401, {
-          success: false,
-          error: { code: "UNAUTHORIZED", message: "Invalid username or password" }
+        responseError(req, res, {
+          status: 401,
+          code: "UNAUTHORIZED",
+          message: "Invalid username or password"
         });
         return;
       }
@@ -325,9 +364,10 @@ const server = http.createServer(async (req, res) => {
         password: body.password
       });
       if (!ok) {
-        sendJson(req, res, 401, {
-          success: false,
-          error: { code: "UNAUTHORIZED", message: "Invalid admin credentials" }
+        responseError(req, res, {
+          status: 401,
+          code: "UNAUTHORIZED",
+          message: "Invalid admin credentials"
         });
         return;
       }
@@ -554,7 +594,11 @@ const server = http.createServer(async (req, res) => {
       const executionId = path.split("/").at(-1);
       const execution = service.getExecution(executionId);
       if (!execution) {
-        sendJson(req, res, 404, { success: false, error: { code: "NOT_FOUND", message: "Execution not found" } });
+        responseError(req, res, {
+          status: 404,
+          code: "NOT_FOUND",
+          message: "Execution not found"
+        });
         return;
       }
       sendJson(req, res, 200, { success: true, data: execution });
@@ -594,9 +638,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    sendJson(req, res, 404, { success: false, error: { code: "NOT_FOUND", message: "Route not found" } });
+    sendJson(req, res, 404, errorEnvelope({ code: "NOT_FOUND", message: "Route not found" }, requestId));
   } catch (error) {
-    safeError(res, error);
+    sendError(req, res, error, requestId);
     // eslint-disable-next-line no-console
     console.log(`[error] ${(error && error.message) || "unknown error"}`);
   }

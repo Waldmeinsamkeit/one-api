@@ -1,169 +1,177 @@
-# one-api monorepo
+# One-API Monorepo
 
-统一 API 适配平台（后端 + 前端 + CLI + MCP）。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/Node.js-v18+-blue.svg)](https://nodejs.org/)
+[![React Version](https://img.shields.io/badge/React-v18-61dafb.svg)](https://reactjs.org/)
+[![MCP Ready](https://img.shields.io/badge/MCP-Ready-green.svg)](https://modelcontextprotocol.io/)
 
-## 项目结构
+**One-API** 是一套由 LLM 驱动的下一代 API 适配与聚合平台。它能够将分散、非标的第三方接口（cURL, OpenAPI, Raw Text）快速转化为标准化的 API 契约，并通过 Web 控制台、命令行（CLI）以及 AI Agent 协议（MCP）对外输出。
 
-- `back/`：后端服务（Node.js）
-- `front/`：前端控制台（Vite + React + TypeScript）
-- `cli/`：命令行工具（AV CLI V1）
-- `mcp/`：MCP Server（供 Claude Desktop/Agent 调用）
+> **核心价值**：消除“写代码对接 API”的枯燥工作，让 AI 代理自动理解并调用全世界的接口。
 
-## 快速启动
+---
 
-### 1) 启动后端
+## 🏗️ 项目架构
 
+项目采用 Monorepo 结构，各模块职责清晰，通过统一的领域逻辑耦合：
+
+*   **`back/`**：核心引擎。支持适配器动态生成（LLM-based）、运行时映射、Secrets 存储及日志审计。
+*   **`front/`**：管理后台。可视化配置模型、管理凭证、Playground 调试及实时日志查看。
+*   **`cli/`**：开发者工具。支持本地开发流 `init -> gen -> run`，适用于 CI/CD 与自动化脚本。
+*   **`mcp/`**：AI 基础设施。实现 Model Context Protocol，让 Claude Desktop 或其他 Agent 具备“自发现”并执行 API 的能力。
+
+---
+
+## 🚀 快速启动
+
+### 1. 后端服务 (Server)
+后端默认使用 SQLite 存储，无需配置重型数据库。
 ```bash
 cd back
+npm install
+cp .env.example .env  # 配置你的 LLM Key (DeepSeek/OpenAI/Gemini)
 node src/server.js
 ```
 
-### 2) 启动前端
-
+### 2. 前端控制台 (Console)
 ```bash
 cd front
 npm install
 npm run dev
 ```
+访问 `http://localhost:5173`，在 **LLM 栏目** 配置平台 Token。
 
-前端 `.env` 示例：
+---
 
-```env
-VITE_BACKEND_URL=http://localhost:3000
-```
+## 🛠️ CLI 工具使用 (AV-CLI)
 
-## 前端主要页面
+AV-CLI 是为开发者设计的命令行利器，支持快速将 cURL 转换为适配器。
 
-- `Adapters`：生成、预览、发布、Sandbox Test
-- `Secrets`：凭证录入与管理
-- `Logs`：执行日志查询
-- `Playground`：快速调试入口
-- `LLM`：模型切换、Prompt 编辑、API Key 配置
-
-## CLI 使用说明（AV CLI V1）
-
-先安装并构建：
-
+### 安装与构建
 ```bash
 cd cli
-npm install
-npm run build
+npm install && npm run build
+alias av-cli='node $(pwd)/dist/index.js'
 ```
 
-帮助：
+### 核心工作流
+1.  **初始化环境**:
+    ```bash
+    av-cli init --backend-url http://127.0.0.1:3000 --token YOUR_TOKEN
+    ```
+2.  **一键生成适配器**:
+    ```bash
+    # 从本地 curl 命令文件生成
+    av-cli gen -f ./weather.curl --api-slug weather --action get_current
+    ```
+3.  **本地模拟执行**:
+    ```bash
+    av-cli run weather --action get_current --payload '{"city":"Tokyo"}'
+    ```
 
-```bash
-node dist/index.js --help
-```
+---
 
-### 常用命令
+## 🤖 AI 智能集成 (MCP)
 
-#### 初始化配置
+通过 MCP 协议，你可以让 AI 助手（如 Claude）直接控制你的 API 库。
 
-```bash
-node dist/index.js init \
-  --profile default \
-  --backend-url http://127.0.0.1:3000 \
-  --token your_platform_token \
-  --workspace-id default \
-  --adapter-dir ./adapters
-```
-
-#### 根据 cURL 生成适配器
-
-```bash
-node dist/index.js gen \
-  -f ./sample.curl \
-  -t curl \
-  --api-slug reqres \
-  --action users
-```
-
-#### 执行适配器
-
-```bash
-node dist/index.js run reqres \
-  --action users \
-  --payload "{\"page\":2}" \
-  --include-hint
-```
-
-#### 查看日志
-
-```bash
-node dist/index.js logs --tail 10
-```
-
-#### 设置密钥
-
-```bash
-node dist/index.js secrets set openai_api_key=sk-xxxx
-```
-
-### 配置优先级
-
-读取顺序：`ENV > 项目配置(.av-cli.json) > 全局配置`
-
-关键环境变量：
-
-- `AV_CLI_PROFILE`
-- `AV_CLI_BACKEND_URL`
-- `AV_CLI_TOKEN`
-- `AV_CLI_WORKSPACE_ID`
-- `AV_CLI_ADAPTER_DIR`
-- `AV_CLI_PREFERRED_MODEL`
-
-## MCP 使用说明（A + C 混合版）
-
-MCP Server 复用 `cli` 的核心能力，并提供 AI 自发现工具（list/get adapters）。
-
-### 启动 MCP
-
-```bash
-cd cli
-npm run build
-
-cd ../mcp
-npm install
-npm run start
-```
-
-### MCP 工具列表
-
-- `init_config`
-- `gen_from_curl`
-- `adapters_list`
-- `adapter_get`
-- `execute_api`
-- `secrets_set`
-- `logs_tail`
-
-### Claude Desktop 配置示例
-
-`claude_desktop_config.json`：
-
+### Claude Desktop 配置
+编辑 `claude_desktop_config.json`：
 ```json
 {
   "mcpServers": {
-    "av-mcp": {
+    "one-api-mcp": {
       "command": "node",
-      "args": ["F:/repo/one-api/mcp/src/index.js"],
-      "cwd": "F:/repo/one-api"
+      "args": ["/PATH/TO/mcp/dist/index.js"],
+      "env": {
+        "AV_CLI_BACKEND_URL": "http://127.0.0.1:3000",
+        "AV_CLI_TOKEN": "你的平台Token"
+      }
     }
   }
 }
 ```
 
-### 推荐冒烟测试
+### AI 交互示例
+> **User**: "帮我看看现在有哪些 API 可以用？"
+> **Claude**: (触发 `adapters_list`) "您目前有 `reqres`, `weather` 等 API..."
+> **User**: "调用 reqres 的 users 动作，查询第 2 页的数据。"
+> **Claude**: (触发 `execute_api`) "收到，执行结果如下..."
 
-1. `帮我看看我现在有哪些 API 可以用？`（应触发 `adapters_list`）
-2. `用 reqres 的 users action 跑一次 page=2`（应触发 `execute_api`）
+---
 
-## 验证命令
+## 🔒 安全与特性
 
-CLI 回归测试：
+*   **多模型驱动**：原生支持 DeepSeek, OpenAI, Gemini 混合调度。
+*   **安全存储**：Secrets 采用 **AES-GCM** 算法加密存储，仅在运行时解密。
+*   **SSRF 防护**：内置 DNS 检查与 IP 黑名单，阻断对内网敏感地址的探测，支持重定向深度校验。
+*   **鉴权隔离**：基于 Workspace 的数据隔离，支持 OAuth (Linux.do) 用户登录。
+*   **审计日志**：完整记录每次调用的 Trace、Latency、脱敏请求与原始响应。
+
+---
+
+## 📅 路线图 (Roadmap)
+
+- [x] **V1.0**: 适配器生成核心链路与 SQLite 持久化
+- [x] **V1.2**: CLI 工具链与 MCP 协议支持
+- [x] **V1.5**: 响应 Mapping 契约校验与 `schema_hint` 增强
+- [ ] **V2.0 (In Progress)**: **响应流式传输 (Streaming)** 支持，优化 LLM 响应体验
+- [ ] **V2.1**: 基于脚本沙箱的复杂逻辑映射转换
+- [ ] **V2.5**: 适配器市场 (Hub)，支持一键导入社区预设
+
+---
+
+## 🤝 贡献与反馈
+
+如果你在测试过程中发现任何问题（如 `EACCES` 网络报错或 `JSONPath` 匹配失效），请提交 Issue 或通过控制台查看脱敏日志。
+
+---
+
+**One-API - 让接口适配进入 AI 自动化时代。**
+## P2 优化更新（2026-04-13）
+
+本次迭代已完成以下三项：
+
+### 1) 错误码分层与返回结构标准化
+
+后端错误响应已统一为：
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "...",
+    "details": null
+  },
+  "meta": {
+    "request_id": "uuid",
+    "timestamp": "2026-04-13T00:00:00.000Z"
+  }
+}
+```
+
+并按类型返回更明确的状态码（401/403/404/422/500）。
+
+### 2) 契约文档自动化（OpenAPI）
+
+- 新增接口：`GET /v1/openapi.json`
+- 新增导出命令：
 
 ```bash
-cd cli
-npm run test
+cd back
+npm run openapi:export
 ```
+
+- 导出文件：`docs/api/openapi.json`
+
+### 3) 适配器鉴权体验增强（auth_mode）
+
+适配器新增显式鉴权模式：
+
+- `auth_mode: "none"`：无鉴权，不允许 `auth_ref` 和 `{{secrets.xxx}}`
+- `auth_mode: "secret"`：需鉴权，要求 `auth_ref.secret_name`
+
+同时兼容历史未声明 `auth_mode` 的适配器。
+前端 Adapters 页面已增加“无鉴权/需鉴权”可视化提示与发布前校验提示。

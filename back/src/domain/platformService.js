@@ -352,9 +352,15 @@ export class PlatformService {
   }
 
   resolveSecrets(workspaceId, spec) {
+    if (spec.auth_mode === "none") {
+      return {};
+    }
     const secrets = {};
     const secretNames = [...collectSecretNames(spec.target)];
-    for (const secretName of secretNames) {
+    if (spec.auth_mode === "secret" && spec.auth_ref?.secret_name) {
+      secretNames.push(spec.auth_ref.secret_name);
+    }
+    for (const secretName of new Set(secretNames)) {
       const record = this.repositories.getSecret(workspaceId, secretName);
       if (!record) {
         throw new Error(`Missing secret: ${secretName}`);

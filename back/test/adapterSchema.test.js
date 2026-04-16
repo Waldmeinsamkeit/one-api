@@ -119,3 +119,67 @@ test("schema_hint rejects non-object field metadata", () => {
   };
   assert.throws(() => validateAdapterSchema(adapter), /schema_hint\.t must be an object/);
 });
+
+test("auth_mode=none rejects secret placeholders", () => {
+  const adapter = {
+    api_slug: "weather",
+    action: "get_current",
+    adapter_schema_version: "1.0",
+    auth_mode: "none",
+    target: {
+      url: "https://example.com/weather",
+      method: "GET",
+      headers: {
+        Authorization: "Bearer {{secrets.api_key}}"
+      }
+    },
+    response_mapping: {
+      data: "$"
+    }
+  };
+  assert.throws(() => validateAdapterSchema(adapter), /auth_mode=none/);
+});
+
+test("auth_mode=secret requires auth_ref.secret_name", () => {
+  const adapter = {
+    api_slug: "weather",
+    action: "get_current",
+    adapter_schema_version: "1.0",
+    auth_mode: "secret",
+    target: {
+      url: "https://example.com/weather",
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    },
+    response_mapping: {
+      data: "$"
+    },
+    auth_ref: {}
+  };
+  assert.throws(() => validateAdapterSchema(adapter), /auth_ref\.secret_name/);
+});
+
+test("auth_mode=secret with auth_ref passes", () => {
+  const adapter = {
+    api_slug: "weather",
+    action: "get_current",
+    adapter_schema_version: "1.0",
+    auth_mode: "secret",
+    target: {
+      url: "https://example.com/weather",
+      method: "GET",
+      headers: {
+        Authorization: "Bearer {{secrets.api_key}}"
+      }
+    },
+    response_mapping: {
+      data: "$"
+    },
+    auth_ref: {
+      secret_name: "api_key"
+    }
+  };
+  assert.equal(validateAdapterSchema(adapter), true);
+});

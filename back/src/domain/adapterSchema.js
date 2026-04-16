@@ -85,6 +85,66 @@ function checkSchemaHint(schemaHint) {
   }
 }
 
+function collectSecretPlaceholders(value, out = new Set()) {
+  if (typeof value === "string") {
+    const matches = [...value.matchAll(/\{\{\s*secrets\.([a-zA-Z0-9_]+)\s*\}\}/g)];
+    for (const match of matches) {
+      out.add(match[1]);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectSecretPlaceholders(item, out);
+    }
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const nested of Object.values(value)) {
+      collectSecretPlaceholders(nested, out);
+    }
+  }
+  return out;
+}
+
+function checkAuthMode(adapter) {
+  const hasExplicitMode = adapter.auth_mode !== undefined;
+  const secretPlaceholders = collectSecretPlaceholders(adapter.target).size;
+  if (!hasExplicitMode) {
+    if (adapter.auth_ref && typeof adapter.auth_ref === "object") {
+      if (!adapter.auth_ref.secret_name || typeof adapter.auth_ref.secret_name !== "string") {
+        throw new Error("auth_ref.secret_name is required");
+      }
+    }
+    // Legacy compatibility: old adapters may omit auth_mode.
+    return;
+  }
+
+  const authMode = adapter.auth_mode;
+  if (!["none", "secret"].includes(authMode)) {
+    throw new Error("auth_mode must be 'none' or 'secret'");
+  }
+
+  if (authMode === "none") {
+    if (adapter.auth_ref) {
+      throw new Error("auth_mode=none does not allow auth_ref");
+    }
+    if (secretPlaceholders > 0) {
+      throw new Error("auth_mode=none does not allow secrets placeholders in target");
+    }
+    return;
+  }
+
+  if (authMode === "secret") {
+    if (!adapter.auth_ref || typeof adapter.auth_ref !== "object") {
+      throw new Error("auth_mode=secret requires auth_ref");
+    }
+    if (!adapter.auth_ref.secret_name || typeof adapter.auth_ref.secret_name !== "string") {
+      throw new Error("auth_ref.secret_name is required when auth_mode=secret");
+    }
+  }
+}
+
 export function validateAdapterSchema(adapter) {
   assertObject(adapter, "adapter");
   const required = ["api_slug", "action", "adapter_schema_version", "target", "response_mapping"];
@@ -105,6 +165,7 @@ export function validateAdapterSchema(adapter) {
   checkExpressions(adapter.response_mapping);
   checkResponseMapping(adapter.response_mapping);
   checkSchemaHint(adapter.schema_hint);
+  checkAuthMode(adapter);
   if (adapter.request_mapping) {
     checkExpressions(adapter.request_mapping);
   }

@@ -12,6 +12,14 @@ node src/server.js
 node scripts/verify.js
 ```
 
+## Export OpenAPI
+
+```bash
+npm run openapi:export
+```
+
+Generated file: `../docs/api/openapi.json`
+
 ## API
 
 - `GET /v1/adapters`
@@ -23,6 +31,7 @@ node scripts/verify.js
 - `POST /v1/secrets`
 - `GET /v1/executions`
 - `GET /v1/executions/:id`
+- `GET /v1/openapi.json`
 - `GET /v1/models`
 - `POST /v1/models/activate`
 - `POST /v1/models/prompt`
@@ -39,6 +48,34 @@ node scripts/verify.js
 ```
 
 When `include_hint=true`, response includes `meta.schema_hint` from adapter spec.
+
+Error responses are standardized as:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "..."
+  },
+  "meta": {
+    "request_id": "uuid",
+    "timestamp": "2026-04-13T00:00:00.000Z"
+  }
+}
+```
+
+HTTP status is layered by error type (401/403/404/422/500).
+
+## Adapter Auth Mode
+
+Adapters support explicit auth mode:
+
+- `auth_mode: "none"`: no `auth_ref`, no `{{secrets.xxx}}` placeholders.
+- `auth_mode: "secret"`: requires `auth_ref.secret_name`.
+
+Old adapters without `auth_mode` are still accepted for compatibility.
 
 ## Local SQL for Secrets
 

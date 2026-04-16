@@ -59,6 +59,45 @@ function parsePayloadKeys(adapter: AdapterRecord | null) {
   return [...new Set(matches.map((m) => m[1]))];
 }
 
+function detectAuthMode(adapter: AdapterRecord | null): "none" | "secret" {
+  if (!adapter?.spec || typeof adapter.spec !== "object") {
+    return "none";
+  }
+  const explicit = (adapter.spec as Record<string, unknown>).auth_mode;
+  if (explicit === "secret") {
+    return "secret";
+  }
+  if (explicit === "none") {
+    return "none";
+  }
+  const text = pretty(adapter.spec);
+  if (text.includes("{{secrets.") || text.includes('"auth_ref"')) {
+    return "secret";
+  }
+  return "none";
+}
+
+function authValidationHint(adapter: AdapterRecord | null): string | null {
+  if (!adapter?.spec || typeof adapter.spec !== "object") {
+    return null;
+  }
+  const mode = detectAuthMode(adapter);
+  const spec = adapter.spec as Record<string, unknown>;
+  const hasAuthRef =
+    Boolean(spec.auth_ref) &&
+    typeof spec.auth_ref === "object" &&
+    Boolean((spec.auth_ref as Record<string, unknown>).secret_name);
+  const hasSecretPlaceholder = pretty(spec).includes("{{secrets.");
+
+  if (mode === "none" && (hasAuthRef || hasSecretPlaceholder)) {
+    return "当前标记为无鉴权，但检测到 auth_ref 或 secrets 占位符，请修正。";
+  }
+  if (mode === "secret" && !hasAuthRef) {
+    return "当前标记为需鉴权，但缺少 auth_ref.secret_name。";
+  }
+  return null;
+}
+
 function buildExecuteRequestExport(adapter: AdapterRecord, token: string, workspace: string) {
   const payloadKeys = parsePayloadKeys(adapter);
   const payload: Record<string, string> = {};
@@ -1065,7 +1104,9 @@ function App() {
                     <div className="mb-3 rounded-md bg-slate-50 p-2 text-xs">
                       <div>Method/URL: {String((generated.spec as any)?.target?.method)} {String((generated.spec as any)?.target?.url)}</div>
                       <div>生成模式: {generated.generation_mode}</div>
+                      <div>鉴权模式: {detectAuthMode(generated) === "secret" ? "需鉴权" : "无鉴权"}</div>
                       {generated.generation_warning && <div className="text-amber-600">警告: {generated.generation_warning}</div>}
+                      {authValidationHint(generated) && <div className="text-amber-600">校验: {authValidationHint(generated)}</div>}
                     </div>
                     <Editor
                       height="240px"
@@ -1117,6 +1158,9 @@ function App() {
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                             <span className="rounded bg-slate-100 px-1.5 py-0.5">v{item.logic_version}</span>
                             <span className="rounded bg-slate-100 px-1.5 py-0.5">schema {item.adapter_schema_version}</span>
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5">
+                              {detectAuthMode(item) === "secret" ? "需鉴权" : "无鉴权"}
+                            </span>
                             <span>更新于 {formatUpdatedAt(item.updated_at)}</span>
                           </div>
                         </div>
@@ -1517,6 +1561,7 @@ Content-Type: application/json
                       <p><strong>api_slug</strong>：建议全小写+下划线，如 <code>openweather</code>。</p>
                       <p><strong>action</strong>：建议动词开头，如 <code>get_current_weather</code>。</p>
                       <p><strong>target_format</strong>：可选，不确定可先留空后续迭代。</p>
+                      <p><strong>auth_mode</strong>：预览中会显示“无鉴权/需鉴权”，发布前会按该模式校验。</p>
                     </section>
 
                     <section>

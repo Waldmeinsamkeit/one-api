@@ -116,9 +116,9 @@
 - [x] SSRF/重定向测试补强（重点覆盖“公网首跳后 302 到内网”阻断）。
 
 ### P2（后续优化）
-- [ ] 错误码分层与接口返回结构标准化（401/403/422/5xx 等）。
-- [ ] 前后端契约文档自动化（OpenAPI 或固定 schema）。
-- [ ] 适配器体验增强（显式无鉴权/需鉴权模式提示与校验）。
+- [x] 错误码分层与接口返回结构标准化（401/403/422/5xx 等）。
+- [x] 前后端契约文档自动化（OpenAPI 或固定 schema）。
+- [x] 适配器体验增强（显式无鉴权/需鉴权模式提示与校验）。
 
 ### 后期目标（暂不执行）
 - [ ] `POST /v1/platform-token/rotate` 权限收紧（加入 admin 校验）。
@@ -229,3 +229,28 @@
   - 保留旧版说明内容并整合到“旧版说明（保留）”折叠区
 - 验证：
   - `cd front && npm run build` 通过。
+
+## 14. 2026-04-13 P2 优化完成
+- 错误码分层与返回结构标准化：
+  - 新增 `back/src/lib/apiError.js`，统一 `ApiError`、错误映射与错误响应 envelope。
+  - `server.js` 全局异常处理接入分层状态码（401/403/404/422/500）与统一结构：
+    - `success=false`
+    - `data=null`
+    - `error={code,message,details}`
+    - `meta={request_id,timestamp}`
+  - 新增 `x-request-id` 响应头。
+- 前后端契约文档自动化：
+  - 新增 `back/src/openapi.js`（固定 OpenAPI 生成）。
+  - 新增接口 `GET /v1/openapi.json`。
+  - 新增脚本 `npm run openapi:export`，导出到 `docs/api/openapi.json`。
+- 适配器鉴权体验增强（显式模式 + 校验）：
+  - 适配器 schema 支持显式 `auth_mode: none|secret`。
+  - `auth_mode=none` 禁止 `auth_ref` 与 `{{secrets.xxx}}` 占位符。
+  - `auth_mode=secret` 强制 `auth_ref.secret_name`。
+  - 兼容历史适配器（未声明 `auth_mode` 仍可校验通过）。
+  - 生成器默认输出 `auth_mode=none`，并在需要时推断为 `secret`。
+  - 前端 Adapters 预览与列表新增“无鉴权/需鉴权”模式提示与校验提示。
+- 测试与验证：
+  - `cd back && node --test test/*.test.js` 通过（43/43）。
+  - `cd front && npm run build` 通过。
+  - `cd back && npm run openapi:export` 成功导出。

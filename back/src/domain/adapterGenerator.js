@@ -49,6 +49,7 @@ export function generateAdapterFromSource({ apiSlug, action, sourceType, sourceC
     action,
     adapter_schema_version: "1.0",
     logic_version: 1,
+    auth_mode: "none",
     target: {
       url: parsed.url,
       method: parsed.method,
@@ -124,6 +125,10 @@ function ensureAdapterDefaults(adapter, { apiSlug, action }) {
   }
   if (!merged.policy) {
     merged.policy = { timeout_ms: 8000, retry: { max_attempts: 1 } };
+  }
+  if (!merged.auth_mode || !["none", "secret"].includes(merged.auth_mode)) {
+    const hasSecretPlaceholder = JSON.stringify(merged.target || {}).includes("{{secrets.");
+    merged.auth_mode = hasSecretPlaceholder ? "secret" : "none";
   }
   return merged;
 }

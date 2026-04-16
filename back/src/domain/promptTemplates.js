@@ -3,6 +3,7 @@ const ADAPTER_SCHEMA_TEMPLATE = {
   action: "string",
   adapter_schema_version: "1.0",
   logic_version: 1,
+  auth_mode: "none|secret",
   target: {
     url: "https://example.com/path",
     method: "GET|POST|PUT|PATCH|DELETE|HEAD",
@@ -28,7 +29,7 @@ const ADAPTER_SCHEMA_TEMPLATE = {
     placement: "header|query",
     key: "Authorization|appid",
     prefix: "Bearer "
-  }, // optional, include only when upstream auth is required
+  }, // required when auth_mode=secret, omit when auth_mode=none
   policy: {
     timeout_ms: 8000,
     retry: {
@@ -45,8 +46,9 @@ export function buildSystemPrompt({ skillInstructions = "" } = {}) {
     "Never include secret values, only secret placeholders like {{secrets.api_key}}.",
     "Expression language is restricted to these functions: coalesce, to_string, to_number, eq, if.",
     "Use JSONPath in response_mapping for extraction.",
-    "If upstream API does not require auth, do NOT add Authorization header or auth_ref.",
-    "Only include auth_ref and secret placeholders when upstream auth is clearly required.",
+    "Use explicit auth_mode: none or secret.",
+    "If upstream API does not require auth, set auth_mode=none and do NOT add Authorization or auth_ref.",
+    "If upstream API requires auth, set auth_mode=secret and include auth_ref + secrets placeholders.",
     "Adapter schema should follow this structure (auth_ref optional):",
     JSON.stringify(ADAPTER_SCHEMA_TEMPLATE)
   ];
